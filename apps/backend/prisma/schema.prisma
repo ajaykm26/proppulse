@@ -1,0 +1,70 @@
+// Prisma schema for PropPulse
+// https://www.prisma.io/docs/concepts/components/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// User
+// ---------------------------------------------------------------------------
+// We store a minimal user record tied to the Clerk user ID.
+// Clerk owns authentication; Prisma owns app-specific user data.
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique // Clerk user ID (e.g. "user_abc123")
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  savedSearches SavedSearch[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Property
+// ---------------------------------------------------------------------------
+
+model Property {
+  id           String   @id @default(cuid())
+  address      String
+  city         String
+  state        String
+  zipCode      String
+  priceCents   Int      // Price in USD cents
+  bedrooms     Int
+  bathrooms    Float
+  sqft         Int
+  propertyType String   // e.g. "house", "condo", "townhouse"
+  status       String   @default("active") // "active" | "pending" | "sold" | "off-market"
+  images       String[] // Array of image URLs
+  aiSummary    String?  // AI-generated summary
+  listedAt     DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("properties")
+}
+
+// ---------------------------------------------------------------------------
+// SavedSearch
+// ---------------------------------------------------------------------------
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   // Human-friendly name for this saved search
+  query     Json     // Serialized SearchQuery object
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("saved_searches")
+}

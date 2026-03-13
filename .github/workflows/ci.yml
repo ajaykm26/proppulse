@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Typecheck & Lint
+  # ---------------------------------------------------------------------------
+  typecheck-and-lint:
+    name: Typecheck & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ------ Shared package ------
+      - name: Typecheck shared
+        run: npm run typecheck --workspace=packages/shared --if-present
+
+      # ------ Frontend ------
+      - name: Typecheck frontend
+        run: npm run typecheck --workspace=apps/frontend
+
+      - name: Lint frontend
+        run: npm run lint --workspace=apps/frontend --if-present
+
+      # ------ Backend ------
+      - name: Typecheck backend
+        run: npm run typecheck --workspace=apps/backend
+
+      - name: Lint backend
+        run: npm run lint --workspace=apps/backend --if-present
