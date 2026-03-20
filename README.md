@@ -67,6 +67,7 @@ Also copy `apps/backend/.env.example` → `apps/backend/.env`.
 cd apps/backend
 npx prisma migrate dev --name init
 npx prisma generate
+npx prisma db seed   # Seeds 4 sample properties in the NJ/NY area
 ```
 
 ### 4. Run Locally
@@ -93,16 +94,26 @@ npm run lint
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
-| POST | `/api/search` | Search properties (stub) |
-| GET | `/api/properties/:id` | Get property by ID (stub) |
+| POST | `/api/search` | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters) |
+| GET | `/api/properties/:id` | Get property by ID |
 
 ## Frontend Pages
 
 | Path | Description |
 |------|-------------|
 | `/` | Landing page with hero section |
-| `/search` | Property search with search bar |
+| `/search` | Property search — calls real `/api/search`, renders result cards |
+| `/properties/:id` | Property detail page — loads from `/api/properties/:id` |
 | `/dashboard` | User dashboard (auth required) |
+
+## Demo Search Queries
+
+After seeding the database, try these in the search bar:
+
+- `Edison, NJ` — returns the Edison colonial
+- `Jersey City` — returns the Jersey City condo
+- `New York, NY` — returns the Midtown condo
+- `Metuchen` — returns the Metuchen house
 
 ## Contributing
 

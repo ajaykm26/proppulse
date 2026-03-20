@@ -3,6 +3,7 @@ import { Nav } from './components/Nav';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { PropertyDetailPage } from './pages/PropertyDetailPage';
 
 /**
  * Root application component.
@@ -17,6 +18,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/properties/:id" element={<PropertyDetailPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
           </Routes>
         </main>
