@@ -12,7 +12,8 @@
     "dev:backend": "npm run dev --workspace=apps/backend",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run typecheck && npm run lint"
   },
   "engines": {
     "node": ">=18.0.0"

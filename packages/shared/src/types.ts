@@ -80,6 +80,22 @@ export interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// AI scoring
+// ---------------------------------------------------------------------------
+
+/** AI-generated investment score and narrative for a property */
+export interface PropPulseScore {
+  /** Overall investment attractiveness from 0 (worst) to 100 (best) */
+  score: number;
+  /** Short narrative summary (2–3 paragraphs max) explaining the score */
+  summary: string;
+  /** Key advantages of the property/area */
+  pros: string[];
+  /** Key risks or drawbacks to be aware of */
+  cons: string[];
+}
+
+// ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
 

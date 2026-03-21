@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 import { healthRoutes } from './routes/health.js';
 import { searchRoutes } from './routes/search.js';
 import { propertyRoutes } from './routes/properties.js';
+import { propertyScoreRoutes } from './routes/property-score.js';
 
 /**
  * PropPulse Backend — Fastify API Server
@@ -39,6 +40,7 @@ async function buildApp() {
   await fastify.register(healthRoutes);
   await fastify.register(searchRoutes);
   await fastify.register(propertyRoutes);
+  await fastify.register(propertyScoreRoutes);
 
   return fastify;
 }

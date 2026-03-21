@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { Property, ApiResponse } from '@proppulse/shared';
+import type { Property, ApiResponse, PropPulseScore } from '@proppulse/shared';
 
 function formatPrice(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -23,10 +23,18 @@ export function PropertyDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [score, setScore] = useState<PropPulseScore | null>(null);
+  const [isScoring, setIsScoring] = useState(false);
+  const [scoreError, setScoreError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
+
+    // Reset score state when we navigate to a different property
+    setScore(null);
+    setScoreError(null);
 
     fetch(`/api/properties/${id}`)
       .then((res) => res.json() as Promise<ApiResponse<Property>>)
@@ -118,6 +126,94 @@ export function PropertyDetailPage() {
           <p className="text-sm text-blue-700 leading-relaxed">{property.aiSummary}</p>
         </div>
       )}
+
+      {/* PropPulse Score */}
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">📊 PropPulse Score</div>
+            <p className="text-xs text-gray-500">
+              Investment-focused score and commentary for this property.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!id) return;
+              setIsScoring(true);
+              setScoreError(null);
+
+              try {
+                const res = await fetch(`/api/properties/${id}/score`, {
+                  method: 'POST',
+                });
+                const data = (await res.json()) as ApiResponse<PropPulseScore>;
+
+                if (!data.success || !data.data) {
+                  setScoreError(data.error ?? 'Failed to generate score.');
+                  setScore(null);
+                } else {
+                  setScore(data.data);
+                }
+              } catch (err) {
+                console.error('Failed to load PropPulse score', err);
+                setScoreError('Could not reach the scoring service. Is the backend running?');
+                setScore(null);
+              } finally {
+                setIsScoring(false);
+              }
+            }}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={isScoring}
+          >
+            {isScoring ? 'Scoring…' : score ? 'Re-score property' : 'Generate score'}
+          </button>
+        </div>
+
+        {scoreError && (
+          <p className="text-xs text-red-600 mb-2">{scoreError}</p>
+        )}
+
+        {score && (
+          <div className="space-y-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-gray-900">{score.score}</span>
+              <span className="text-xs uppercase tracking-wide text-gray-500">/ 100</span>
+            </div>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+              {score.summary}
+            </p>
+
+            {(score.pros?.length ?? 0) > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-gray-800 mb-1">Pros</div>
+                <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
+                  {score.pros.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(score.cons?.length ?? 0) > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-gray-800 mb-1">Cons</div>
+                <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
+                  {score.cons.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!score && !scoreError && !isScoring && (
+          <p className="text-xs text-gray-500">
+            Click "Generate score" to see an investment-oriented rating and summary for this property.
+          </p>
+        )}
+      </div>
 
       {/* Listed date */}
       <p className="text-xs text-gray-400">

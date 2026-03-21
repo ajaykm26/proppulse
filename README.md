@@ -61,6 +61,15 @@ cp .env.example .env
 
 Also copy `apps/backend/.env.example` → `apps/backend/.env`.
 
+For AI-powered features (like the PropPulse investment score), set:
+
+```bash
+# apps/backend/.env
+OPENAI_API_KEY="sk-..."  # your OpenAI API key
+```
+
+If `OPENAI_API_KEY` is not set, the backend will fall back to a deterministic mock scorer so the `/api/properties/:id/score` endpoint still works in local/dev environments.
+
 ### 3. Set Up the Database
 
 ```bash
@@ -89,6 +98,47 @@ npm run typecheck
 npm run lint
 ```
 
+### 6. Tests
+
+There is currently no dedicated test runner, but the root `npm test` command is configured as a fast safety check:
+
+```bash
+npm test  # runs typecheck + lint across all workspaces
+```
+
+## PropPulse Score Endpoint
+
+The PropPulse score endpoint generates an investment-focused score for a specific property, plus a short narrative and pros/cons list.
+
+### Request
+
+```bash
+curl -X POST "http://localhost:3001/api/properties/<propertyId>/score" \
+  -H "Content-Type: application/json"
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "score": 78,
+    "summary": "Short narrative about the investment profile...",
+    "pros": [
+      "Strong rental demand in the submarket",
+      "Balanced price-to-rent ratio"
+    ],
+    "cons": [
+      "Limited value-add opportunities",
+      "Returns sensitive to interest rate environment"
+    ]
+  }
+}
+```
+
+On the frontend, the property detail page (`/properties/:id`) exposes a **PropPulse Score** section with a button that calls this endpoint and renders the score, summary, and pros/cons with loading/error states.
+
 ## API Routes
 
 | Method | Path | Description |
@@ -96,6 +146,7 @@ npm run lint
 | GET | `/health` | Health check |
 | POST | `/api/search` | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters) |
 | GET | `/api/properties/:id` | Get property by ID |
+| POST | `/api/properties/:id/score` | Generate a PropPulse investment score + AI narrative for a property |
 
 ## Frontend Pages
 
