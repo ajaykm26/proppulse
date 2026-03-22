@@ -76,8 +76,26 @@ If `OPENAI_API_KEY` is not set, the backend will fall back to a deterministic mo
 cd apps/backend
 npx prisma migrate dev --name init
 npx prisma generate
-npx prisma db seed   # Seeds 4 sample properties in the NJ/NY area
 ```
+
+#### Seed sample data
+
+The seed script inserts ~40 realistic properties across NYC metro + NJ (Jersey City, Hoboken, Newark, Manhattan, Brooklyn, Queens, Edison, Metuchen, Montclair). It is **idempotent** — re-running wipes and re-inserts the full dataset.
+
+```bash
+# Option A — via Prisma (recommended)
+npx prisma db seed
+
+# Option B — direct npm script (from apps/backend)
+npm run seed
+```
+
+After seeding, try these searches in the UI:
+
+- `Jersey City` — waterfront condos and investment properties
+- `Brooklyn` — brownstones, Park Slope, Bed-Stuy, and more
+- `condo` — free-text search across address and description
+- `Edison, NJ` — suburban NJ homes and condos
 
 ### 4. Run Locally
 
@@ -161,10 +179,14 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 
 After seeding the database, try these in the search bar:
 
-- `Edison, NJ` — returns the Edison colonial
-- `Jersey City` — returns the Jersey City condo
-- `New York, NY` — returns the Midtown condo
-- `Metuchen` — returns the Metuchen house
+- `Jersey City` — waterfront condos, Journal Square, Newport
+- `Hoboken, NJ` — luxury condos and townhouses
+- `Brooklyn` — brownstones, Park Slope, Crown Heights
+- `New York, NY` — condos across Manhattan neighborhoods
+- `Newark` — multi-family and value plays in NJ
+- `Edison, NJ` — suburban colonials and condos
+- `Metuchen` — walkable NJ with transit access
+- `condo` — free-text search across all property descriptions
 
 ## Contributing
 
