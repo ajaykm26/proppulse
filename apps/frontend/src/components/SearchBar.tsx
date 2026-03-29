@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 
 interface SearchBarProps {
   /** Called when the user submits a search query */
@@ -18,6 +18,10 @@ export function SearchBar({
   initialValue = '',
 }: SearchBarProps) {
   const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
