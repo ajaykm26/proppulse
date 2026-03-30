@@ -1,31 +1,29 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { useAuth, useUser } from '@clerk/clerk-react';
 import { SearchBar } from '../components/SearchBar';
 import { PropertyCard } from '../components/PropertyCard';
 import { FilterPanel, hasActiveFilters } from '../components/FilterPanel';
 import { Pagination } from '../components/Pagination';
 import type { FilterValues } from '../components/FilterPanel';
-import type { SearchResult, SearchQuery, PropertyType, PropertyStatus } from '@proppulse/shared';
+import type {
+  ApiResponse,
+  CreateSavedSearchInput,
+  SearchResult,
+  SearchQuery,
+  PropertyType,
+  PropertyStatus,
+  SavedSearch,
+} from '@proppulse/shared';
 
-/**
- * Parse a free-text search string into structured SearchQuery filters.
- *
- * Handles patterns like:
- *   "Edison, NJ"           → city + state
- *   "Jersey City NJ 07302" → city + state + zip
- *   "Edison"               → city only
- *   anything else          → passed as query (reserved for future AI parsing)
- */
 function parseQuery(q: string): Partial<SearchQuery> {
   const trimmed = q.trim();
   if (!trimmed) return {};
 
-  // Extract 5-digit zip code
   const zipMatch = trimmed.match(/\b(\d{5})\b/);
   const zipCode = zipMatch?.[1];
   const withoutZip = trimmed.replace(/\b\d{5}\b/, '').trim().replace(/,\s*$/, '').trim();
 
-  // "City, ST" or "City ST"
   const cityStateMatch = withoutZip.match(/^(.+?),?\s+([A-Z]{2})$/i);
   if (cityStateMatch) {
     return {
@@ -36,16 +34,13 @@ function parseQuery(q: string): Partial<SearchQuery> {
     };
   }
 
-  // Short plain-text string — treat as city name
   if (/^[a-z\s]+$/i.test(withoutZip) && withoutZip.split(' ').length <= 3) {
     return { city: withoutZip, ...(zipCode && { zipCode }), query: trimmed };
   }
 
-  // Fall through — pass as free-text query
   return { query: trimmed };
 }
 
-/** Read FilterValues from URL search params */
 function paramsToFilters(p: URLSearchParams): FilterValues {
   return {
     minPrice: p.get('minPrice') ?? '',
@@ -57,7 +52,6 @@ function paramsToFilters(p: URLSearchParams): FilterValues {
   };
 }
 
-/** Build a URL param record from query + filters (omits empty values, resets page) */
 function buildParams(q: string, f: FilterValues, page?: number): Record<string, string> {
   const params: Record<string, string> = {};
   if (q) params.q = q;
@@ -71,28 +65,50 @@ function buildParams(q: string, f: FilterValues, page?: number): Record<string, 
   return params;
 }
 
-/**
- * Property search page.
- * All search state is reflected in URL params so searches are shareable.
- * Calls POST /api/search and renders results as a PropertyCard grid.
- */
+function filtersToSearchQuery(q: string, page: number, f: FilterValues): SearchQuery {
+  return {
+    ...parseQuery(q),
+    ...(f.minPrice && { minPriceCents: Math.round(parseFloat(f.minPrice) * 100) }),
+    ...(f.maxPrice && { maxPriceCents: Math.round(parseFloat(f.maxPrice) * 100) }),
+    ...(f.minBedrooms && { minBedrooms: parseInt(f.minBedrooms, 10) }),
+    ...(f.minBathrooms && { minBathrooms: parseFloat(f.minBathrooms) }),
+    ...(f.propertyType && { propertyType: f.propertyType as PropertyType }),
+    ...(f.status && { status: f.status as PropertyStatus }),
+    page,
+    limit: 20,
+  };
+}
+
+function buildSavedSearchName(q: string, f: FilterValues): string {
+  const parts: string[] = [];
+  if (q.trim()) parts.push(q.trim());
+  if (f.propertyType) parts.push(f.propertyType);
+  if (f.status) parts.push(f.status);
+  if (f.minBedrooms) parts.push(`${f.minBedrooms}+ bd`);
+  if (f.maxPrice) parts.push(`under $${Number(f.maxPrice).toLocaleString()}`);
+  return parts.slice(0, 4).join(' • ') || 'Saved search';
+}
+
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isSignedIn } = useUser();
+  const { getToken } = useAuth();
 
-  // Draft filter state — reflects what's in the filter panel inputs
   const [filters, setFilters] = useState<FilterValues>(() => paramsToFilters(searchParams));
-
   const [results, setResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<{ loading: boolean; message: string | null; error: string | null }>({
+    loading: false,
+    message: null,
+    error: null,
+  });
 
-  // Run search whenever URL params change (handles initial load, browser back/forward)
   useEffect(() => {
     const q = searchParams.get('q') ?? '';
     const page = parseInt(searchParams.get('page') ?? '1', 10);
     const f = paramsToFilters(searchParams);
 
-    // Sync draft filter state to URL
     setFilters(f);
 
     const hasInput = !!q || hasActiveFilters(f);
@@ -106,25 +122,13 @@ export function SearchPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const body: SearchQuery = {
-        ...parseQuery(q),
-        ...(f.minPrice && { minPriceCents: Math.round(parseFloat(f.minPrice) * 100) }),
-        ...(f.maxPrice && { maxPriceCents: Math.round(parseFloat(f.maxPrice) * 100) }),
-        ...(f.minBedrooms && { minBedrooms: parseInt(f.minBedrooms, 10) }),
-        ...(f.minBathrooms && { minBathrooms: parseFloat(f.minBathrooms) }),
-        ...(f.propertyType && { propertyType: f.propertyType as PropertyType }),
-        ...(f.status && { status: f.status as PropertyStatus }),
-        page,
-        limit: 20,
-      };
+      const body = filtersToSearchQuery(q, page, f);
       const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        throw new Error(`Server responded with ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       const data = (await res.json()) as SearchResult;
       setResults(data);
     } catch (err) {
@@ -134,18 +138,15 @@ export function SearchPage() {
     }
   }
 
-  /** Submit a new text search (resets page to 1) */
   function handleSearch(newQ: string) {
     setSearchParams(buildParams(newQ, filters));
   }
 
-  /** Apply current filter panel values (resets page to 1) */
   function handleApplyFilters(nextFilters?: FilterValues) {
     const q = searchParams.get('q') ?? '';
     setSearchParams(buildParams(q, nextFilters ?? filters));
   }
 
-  /** Navigate to a specific page, preserving all other params */
   function handlePageChange(newPage: number) {
     const q = searchParams.get('q') ?? '';
     const f = paramsToFilters(searchParams);
@@ -153,22 +154,97 @@ export function SearchPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  async function handleSaveSearch() {
+    const q = searchParams.get('q') ?? '';
+    const page = parseInt(searchParams.get('page') ?? '1', 10);
+    const query = filtersToSearchQuery(q, page, filters);
+    const payload: CreateSavedSearchInput = {
+      name: buildSavedSearchName(q, filters),
+      query,
+    };
+
+    setSaveState({ loading: true, message: null, error: null });
+
+    try {
+      const token = await getToken();
+      const res = await fetch('/api/saved-searches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await res.json()) as ApiResponse<SavedSearch>;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? 'Failed to save search');
+      }
+
+      setSaveState({ loading: false, message: `Saved as “${data.data?.name ?? payload.name}”`, error: null });
+    } catch (err) {
+      setSaveState({
+        loading: false,
+        message: null,
+        error: err instanceof Error ? err.message : 'Failed to save search',
+      });
+    }
+  }
+
   const q = searchParams.get('q') ?? '';
-  const hasInput = !!q || hasActiveFilters(paramsToFilters(searchParams));
+  const activeFilters = paramsToFilters(searchParams);
+  const hasInput = !!q || hasActiveFilters(activeFilters);
+  const saveButtonLabel = useMemo(() => {
+    if (saveState.loading) return 'Saving…';
+    return 'Save search';
+  }, [saveState.loading]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Find your next home</h1>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Find your next home</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Search listings, apply filters, and save promising criteria for later.
+          </p>
+        </div>
 
-      {/* Search bar */}
+        <div className="sm:text-right">
+          {isSignedIn ? (
+            <button
+              type="button"
+              onClick={() => void handleSaveSearch()}
+              disabled={!hasInput || saveState.loading}
+              className="inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saveButtonLabel}
+            </button>
+          ) : (
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Sign in to save searches
+            </Link>
+          )}
+
+          {saveState.message && <p className="mt-2 text-xs text-green-600">{saveState.message}</p>}
+          {saveState.error && <p className="mt-2 text-xs text-red-600">{saveState.error}</p>}
+        </div>
+      </div>
+
       <div className="mb-4">
         <SearchBar onSearch={handleSearch} initialValue={q} />
       </div>
 
-      {/* Filter panel */}
       <FilterPanel values={filters} onChange={setFilters} onApply={handleApplyFilters} />
 
-      {/* Loading */}
+      {!isLoading && !error && hasInput && (
+        <div className="mb-6 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          Current search: <span className="font-medium text-gray-900">{buildSavedSearchName(q, activeFilters)}</span>
+        </div>
+      )}
+
       {isLoading && (
         <div className="flex flex-col items-center py-16 text-gray-500 gap-4">
           <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
@@ -176,53 +252,40 @@ export function SearchPage() {
         </div>
       )}
 
-      {/* Error */}
       {!isLoading && error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-6 text-center">
           <p className="text-red-700 font-medium">{error}</p>
           <p className="text-sm text-red-500 mt-1">
-            Make sure the backend is running:{' '}
-            <code className="bg-red-100 px-1 rounded">npm run dev:backend</code>
+            Make sure the backend is running: <code className="bg-red-100 px-1 rounded">npm run dev:backend</code>
           </p>
         </div>
       )}
 
-      {/* Empty state */}
       {!isLoading && !error && results !== null && results.total === 0 && (
         <div className="text-center py-16 text-gray-500">
           <div className="text-4xl mb-3">🏚️</div>
           <p className="font-medium">No properties found</p>
           <p className="text-sm mt-1">
             Try broadening your filters or a different search —{' '}
-            <button
-              className="text-primary-600 hover:underline"
-              onClick={() => handleSearch('Edison, NJ')}
-            >
+            <button className="text-primary-600 hover:underline" onClick={() => handleSearch('Edison, NJ')}>
               Edison, NJ
             </button>{' '}
             or{' '}
-            <button
-              className="text-primary-600 hover:underline"
-              onClick={() => handleSearch('Jersey City')}
-            >
+            <button className="text-primary-600 hover:underline" onClick={() => handleSearch('Jersey City')}>
               Jersey City
             </button>
           </p>
         </div>
       )}
 
-      {/* Idle / initial state */}
       {!isLoading && !error && results === null && !hasInput && (
         <div className="text-center py-16 text-gray-400">
           <div className="text-4xl mb-3">🏠</div>
           <p>Enter a search above to find properties</p>
-          <p className="text-sm mt-2 text-gray-300">
-            Try "Edison, NJ" · "Jersey City" · "New York, NY"
-          </p>
+          <p className="text-sm mt-2 text-gray-300">Try "Edison, NJ" · "Jersey City" · "New York, NY"</p>
         </div>
       )}
 
-      {/* Results */}
       {!isLoading && !error && results !== null && results.total > 0 && (
         <>
           <p className="text-sm text-gray-500 mb-4">
@@ -234,11 +297,7 @@ export function SearchPage() {
               <PropertyCard key={property.id} property={property} />
             ))}
           </div>
-          <Pagination
-            page={results.page}
-            totalPages={results.totalPages}
-            onPageChange={handlePageChange}
-          />
+          <Pagination page={results.page} totalPages={results.totalPages} onPageChange={handlePageChange} />
         </>
       )}
     </div>

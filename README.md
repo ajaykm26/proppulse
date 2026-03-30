@@ -165,6 +165,9 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 | POST | `/api/search` | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters) |
 | GET | `/api/properties/:id` | Get property by ID |
 | POST | `/api/properties/:id/score` | Generate a PropPulse investment score + AI narrative for a property |
+| GET | `/api/saved-searches` | List the signed-in user's saved searches |
+| POST | `/api/saved-searches` | Save the current search criteria to the dashboard |
+| DELETE | `/api/saved-searches/:id` | Delete one saved search |
 
 ## Frontend Pages
 
@@ -173,7 +176,7 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 | `/` | Landing page with hero section |
 | `/search` | Property search — calls real `/api/search`, renders result cards |
 | `/properties/:id` | Property detail page — loads from `/api/properties/:id` |
-| `/dashboard` | User dashboard (auth required) |
+| `/dashboard` | User dashboard (auth required, now lists saved searches) |
 
 ## Demo Search Queries
 
@@ -206,6 +209,10 @@ Click the **Filters** button below the search bar to expand the filter panel. Av
 | Status | Listing status | `active`, `pending`, `sold`, `off-market` |
 
 Click **Apply Filters** to run a new search with the selected criteria. The active filter indicator (✓) on the button shows when filters are in effect. Use **Clear filters** to reset all filter values.
+
+### Saved Searches
+
+When signed in, the search page shows a **Save search** button that stores the current query + filters to the user's dashboard. Saved searches can be re-run later or deleted from `/dashboard`.
 
 ### URL-Synced State
 

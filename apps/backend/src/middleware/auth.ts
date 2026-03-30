@@ -1,13 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { verifyToken } from '@clerk/backend';
 
 /**
- * Clerk JWT verification middleware (stub).
+ * Clerk JWT verification middleware.
  *
- * TODO: Replace with full Clerk verification using @clerk/backend's
- * `verifyToken` once the Clerk secret key is configured.
- *
- * Usage in routes:
- *   fastify.addHook('preHandler', requireAuth);
+ * In local/dev environments where Clerk is not fully configured, we fall back to
+ * a simple JWT payload decode so authenticated UI flows can still be exercised.
  */
 
 export interface AuthenticatedUser {
@@ -15,20 +13,12 @@ export interface AuthenticatedUser {
   email?: string;
 }
 
-/**
- * Extends the Fastify request type to include the authenticated user.
- * Add this declaration to your app's type augmentation as needed.
- */
 declare module 'fastify' {
   interface FastifyRequest {
     user?: AuthenticatedUser;
   }
 }
 
-/**
- * requireAuth — Fastify preHandler hook.
- * Verifies the Bearer token in the Authorization header using Clerk.
- */
 export async function requireAuth(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -42,15 +32,18 @@ export async function requireAuth(
   const token = authHeader.slice(7);
 
   try {
-    // TODO: Replace this stub with actual Clerk token verification:
-    //
-    // import { verifyToken } from '@clerk/backend';
-    // const payload = await verifyToken(token, {
-    //   secretKey: process.env.CLERK_SECRET_KEY,
-    // });
-    // request.user = { clerkId: payload.sub, email: payload.email as string };
+    if (process.env.CLERK_SECRET_KEY) {
+      const payload = await verifyToken(token, {
+        secretKey: process.env.CLERK_SECRET_KEY,
+      });
 
-    // Stub: decode payload naively (JWT body is base64url-encoded JSON)
+      request.user = {
+        clerkId: payload.sub,
+        email: typeof payload.email === 'string' ? payload.email : undefined,
+      };
+      return;
+    }
+
     const [, payloadB64] = token.split('.');
     if (!payloadB64) throw new Error('Invalid token format');
 

@@ -80,6 +80,23 @@ export interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// Saved searches
+// ---------------------------------------------------------------------------
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: SearchQuery;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSavedSearchInput {
+  name: string;
+  query: SearchQuery;
+}
+
+// ---------------------------------------------------------------------------
 // AI scoring
 // ---------------------------------------------------------------------------
 

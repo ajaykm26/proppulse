@@ -6,6 +6,7 @@ import { healthRoutes } from './routes/health.js';
 import { searchRoutes } from './routes/search.js';
 import { propertyRoutes } from './routes/properties.js';
 import { propertyScoreRoutes } from './routes/property-score.js';
+import { savedSearchRoutes } from './routes/saved-searches.js';
 
 /**
  * PropPulse Backend — Fastify API Server
@@ -41,6 +42,7 @@ async function buildApp() {
   await fastify.register(searchRoutes);
   await fastify.register(propertyRoutes);
   await fastify.register(propertyScoreRoutes);
+  await fastify.register(savedSearchRoutes);
 
   return fastify;
 }
