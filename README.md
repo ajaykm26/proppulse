@@ -78,6 +78,11 @@ npx prisma migrate dev --name init
 npx prisma generate
 ```
 
+> **Note:** If upgrading an existing database, run a new migration to add the `saved_properties` table:
+> ```bash
+> npx prisma migrate dev --name add-saved-properties
+> ```
+
 #### Seed sample data
 
 The seed script inserts ~40 realistic properties across NYC metro + NJ (Jersey City, Hoboken, Newark, Manhattan, Brooklyn, Queens, Edison, Metuchen, Montclair). It is **idempotent** — re-running wipes and re-inserts the full dataset.
@@ -159,24 +164,27 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 
 ## API Routes
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/search` | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters) |
-| GET | `/api/properties/:id` | Get property by ID |
-| POST | `/api/properties/:id/score` | Generate a PropPulse investment score + AI narrative for a property |
-| GET | `/api/saved-searches` | List the signed-in user's saved searches |
-| POST | `/api/saved-searches` | Save the current search criteria to the dashboard |
-| DELETE | `/api/saved-searches/:id` | Delete one saved search |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/health` | — | Health check |
+| POST | `/api/search` | — | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters) |
+| GET | `/api/properties/:id` | — | Get property by ID |
+| POST | `/api/properties/:id/score` | — | Generate a PropPulse investment score + AI narrative for a property |
+| GET | `/api/saved-searches` | ✓ | List the signed-in user's saved searches |
+| POST | `/api/saved-searches` | ✓ | Save the current search criteria to the dashboard |
+| DELETE | `/api/saved-searches/:id` | ✓ | Delete one saved search |
+| GET | `/api/saved-properties` | ✓ | List the signed-in user's saved (favorited) properties |
+| POST | `/api/saved-properties` | ✓ | Save (favorite) a property — body: `{ propertyId }` |
+| DELETE | `/api/saved-properties/:id` | ✓ | Remove a saved property by its saved-record ID |
 
 ## Frontend Pages
 
 | Path | Description |
 |------|-------------|
 | `/` | Landing page with hero section |
-| `/search` | Property search — calls real `/api/search`, renders result cards |
-| `/properties/:id` | Property detail page — loads from `/api/properties/:id` |
-| `/dashboard` | User dashboard (auth required, now lists saved searches) |
+| `/search` | Property search — calls real `/api/search`, renders result cards with heart toggle when signed in |
+| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in |
+| `/dashboard` | User dashboard (auth required) — saved properties count + list, saved searches count + list |
 
 ## Demo Search Queries
 
@@ -209,6 +217,14 @@ Click the **Filters** button below the search bar to expand the filter panel. Av
 | Status | Listing status | `active`, `pending`, `sold`, `off-market` |
 
 Click **Apply Filters** to run a new search with the selected criteria. The active filter indicator (✓) on the button shows when filters are in effect. Use **Clear filters** to reset all filter values.
+
+### Saved Properties (Favorites)
+
+When signed in, a heart icon appears on every property card in the search results. Clicking it saves or unsaves the property instantly. Saved properties also have a **Save / Saved** button on the detail page (`/properties/:id`).
+
+All favorited properties appear in the **Saved Properties** section of `/dashboard`, showing a thumbnail, price, address, and specs. From there you can jump straight to a listing's detail page or remove it from favorites.
+
+The backend stores saved properties in the `saved_properties` table with a unique `(userId, propertyId)` constraint, so duplicate saves are safely idempotent.
 
 ### Saved Searches
 

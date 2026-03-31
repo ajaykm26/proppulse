@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, useUser, RedirectToSignIn } from '@clerk/clerk-react';
-import type { ApiResponse, SavedSearch } from '@proppulse/shared';
+import type { ApiResponse, SavedProperty, SavedSearch } from '@proppulse/shared';
 
 function describeQuery(search: SavedSearch): string {
   const query = search.query;
@@ -33,40 +33,63 @@ function savedSearchToUrl(search: SavedSearch): string {
   return queryString ? `/search?${queryString}` : '/search';
 }
 
+function formatPrice(cents: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
 export function DashboardPage() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const [savedProperties, setSavedProperties] = useState<SavedProperty[]>([]);
   const [isLoadingSearches, setIsLoadingSearches] = useState(true);
+  const [isLoadingProperties, setIsLoadingProperties] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
 
-    async function loadSavedSearches() {
+    async function loadData() {
       setIsLoadingSearches(true);
+      setIsLoadingProperties(true);
       setError(null);
 
       try {
         const token = await getToken();
-        const res = await fetch('/api/saved-searches', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = (await res.json()) as ApiResponse<SavedSearch[]>;
+        const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-        if (!res.ok || !data.success || !data.data) {
-          throw new Error(data.error ?? 'Failed to load saved searches');
+        const [searchesRes, propertiesRes] = await Promise.all([
+          fetch('/api/saved-searches', { headers: authHeaders }),
+          fetch('/api/saved-properties', { headers: authHeaders }),
+        ]);
+
+        const [searchesData, propertiesData] = await Promise.all([
+          searchesRes.json() as Promise<ApiResponse<SavedSearch[]>>,
+          propertiesRes.json() as Promise<ApiResponse<SavedProperty[]>>,
+        ]);
+
+        if (!searchesRes.ok || !searchesData.success || !searchesData.data) {
+          throw new Error(searchesData.error ?? 'Failed to load saved searches');
+        }
+        if (!propertiesRes.ok || !propertiesData.success || !propertiesData.data) {
+          throw new Error(propertiesData.error ?? 'Failed to load saved properties');
         }
 
-        setSavedSearches(data.data);
+        setSavedSearches(searchesData.data);
+        setSavedProperties(propertiesData.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load saved searches');
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
       } finally {
         setIsLoadingSearches(false);
+        setIsLoadingProperties(false);
       }
     }
 
-    void loadSavedSearches();
+    void loadData();
   }, [getToken, isLoaded, isSignedIn]);
 
   async function handleDeleteSavedSearch(id: string) {
@@ -84,6 +107,24 @@ export function DashboardPage() {
       setSavedSearches((current) => current.filter((item) => item.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete saved search');
+    }
+  }
+
+  async function handleUnsaveProperty(savedPropertyId: string) {
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/saved-properties/${savedPropertyId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = (await res.json()) as ApiResponse<{ id: string }>;
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? 'Failed to unsave property');
+      }
+
+      setSavedProperties((current) => current.filter((item) => item.id !== savedPropertyId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unsave property');
     }
   }
 
@@ -106,8 +147,8 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
         {[
-          { label: 'Saved Searches', value: String(savedSearches.length), icon: '🔍' },
-          { label: 'Saved Properties', value: '—', icon: '❤️' },
+          { label: 'Saved Searches', value: isLoadingSearches ? '…' : String(savedSearches.length), icon: '🔍' },
+          { label: 'Saved Properties', value: isLoadingProperties ? '…' : String(savedProperties.length), icon: '❤️' },
           { label: 'New Matches', value: '—', icon: '🔔' },
         ].map(({ label, value, icon }) => (
           <div
@@ -123,6 +164,84 @@ export function DashboardPage() {
         ))}
       </div>
 
+      {error && <p className="mb-6 text-sm text-red-600">{error}</p>}
+
+      {/* Saved Properties */}
+      <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm mb-8">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Saved Properties</h2>
+            <p className="text-sm text-gray-500 mt-1">Properties you've favorited for easy follow-up.</p>
+          </div>
+          <Link to="/search" className="text-sm text-primary-600 hover:underline">
+            Browse listings
+          </Link>
+        </div>
+
+        {isLoadingProperties ? (
+          <div className="text-center py-10 text-gray-400">Loading saved properties…</div>
+        ) : savedProperties.length === 0 ? (
+          <div className="text-center py-10 text-gray-400">
+            <div className="text-3xl mb-2">❤️</div>
+            <p>No saved properties yet.</p>
+            <p className="text-sm mt-1">
+              <Link to="/search" className="text-primary-600 hover:underline">
+                Browse listings
+              </Link>{' '}
+              and click the heart to save properties you like.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {savedProperties.map((sp) => {
+              const p = sp.property;
+              return (
+                <div
+                  key={sp.id}
+                  className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    {p.images[0] && (
+                      <img
+                        src={p.images[0]}
+                        alt={p.address}
+                        className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-gray-200"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-900">{formatPrice(p.priceCents)}</div>
+                      <div className="text-sm text-gray-600 truncate">
+                        {p.address}, {p.city}, {p.state}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {p.bedrooms} bd · {p.bathrooms} ba · {p.sqft.toLocaleString()} sqft · <span className="capitalize">{p.propertyType}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <Link
+                      to={`/properties/${p.id}`}
+                      className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      View
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void handleUnsaveProperty(sp.id)}
+                      className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Saved Searches */}
       <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
         <div className="flex items-center justify-between gap-4 mb-4">
           <div>
@@ -133,8 +252,6 @@ export function DashboardPage() {
             + New saved search
           </Link>
         </div>
-
-        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
         {isLoadingSearches ? (
           <div className="text-center py-10 text-gray-400">Loading saved searches…</div>
