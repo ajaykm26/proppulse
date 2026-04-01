@@ -184,7 +184,7 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 | `/` | Landing page with hero section |
 | `/search` | Property search — calls real `/api/search`, renders result cards with heart toggle when signed in |
 | `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in |
-| `/dashboard` | User dashboard (auth required) — saved properties count + list, saved searches count + list |
+| `/dashboard` | User dashboard (auth required) — saved properties, saved searches, and recent new-match previews from saved searches |
 
 ## Demo Search Queries
 
@@ -229,6 +229,17 @@ The backend stores saved properties in the `saved_properties` table with a uniqu
 ### Saved Searches
 
 When signed in, the search page shows a **Save search** button that stores the current query + filters to the user's dashboard. Saved searches can be re-run later or deleted from `/dashboard`.
+
+### Dashboard Match Previews
+
+The dashboard now turns saved searches into a lightweight alerting surface:
+
+- **New Matches** counts listings whose `listedAt` date is newer than when the search was saved
+- The count is **de-duplicated across saved searches** so the same property is not double-counted
+- Already-favorited properties are excluded from the headline **New Matches** number
+- A **Recent Matches** section previews fresh listings grouped by saved search and links directly to the property detail page or full search results
+
+This is an MVP-style preview layer built on top of the existing `/api/search` endpoint — no extra schema or background jobs required yet.
 
 ### URL-Synced State
 
