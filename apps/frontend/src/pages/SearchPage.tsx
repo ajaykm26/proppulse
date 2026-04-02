@@ -5,6 +5,7 @@ import { SearchBar } from '../components/SearchBar';
 import { PropertyCard } from '../components/PropertyCard';
 import { FilterPanel, hasActiveFilters } from '../components/FilterPanel';
 import { Pagination } from '../components/Pagination';
+import { SearchInsights } from '../components/SearchInsights';
 import type { FilterValues } from '../components/FilterPanel';
 import type {
   ApiResponse,
@@ -350,6 +351,7 @@ export function SearchPage() {
 
       {!isLoading && !error && results !== null && results.total > 0 && (
         <>
+          <SearchInsights properties={results.properties} total={results.total} />
           <p className="text-sm text-gray-500 mb-4">
             {results.total} {results.total === 1 ? 'property' : 'properties'} found
             {results.totalPages > 1 && ` · page ${results.page} of ${results.totalPages}`}

@@ -230,6 +230,19 @@ The backend stores saved properties in the `saved_properties` table with a uniqu
 
 When signed in, the search page shows a **Save search** button that stores the current query + filters to the user's dashboard. Saved searches can be re-run later or deleted from `/dashboard`.
 
+### Search Insights
+
+When a search returns results, a compact **Search Insights** panel appears above the property grid. It computes four metrics client-side from the current page of results — no backend changes required:
+
+| Metric | Description |
+|--------|-------------|
+| **Median Price** | Median listing price of properties on the current page |
+| **Avg $/sqft** | Average price-per-square-foot across listings with known sqft |
+| **Newest Listing** | Date of the most recently listed property on this page |
+| **Listing Mix** | Dominant property type and its share of current-page results |
+
+A plain-English summary sentence beneath the cards helps investors and homebuyers quickly interpret the result set — noting price anchors, listing volume, and demand signals like the share of listings already under contract.
+
 ### Dashboard Match Previews
 
 The dashboard now turns saved searches into a lightweight alerting surface:
