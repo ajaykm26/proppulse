@@ -63,14 +63,26 @@ export async function searchRoutes(fastify: FastifyInstance): Promise<void> {
 
       const where = textFilter ? { AND: [structuredFilter, textFilter] } : structuredFilter;
 
-      fastify.log.info({ query, where, page, limit }, 'Search request received');
+      // Dynamic sort — defaults to newest-first (preserves prior behaviour)
+      type OrderBy = { listedAt: 'asc' | 'desc' } | { priceCents: 'asc' | 'desc' };
+      const orderBy: OrderBy = (() => {
+        switch (query.sort) {
+          case 'price-asc':  return { priceCents: 'asc' as const };
+          case 'price-desc': return { priceCents: 'desc' as const };
+          case 'newest':
+          case 'best-match':
+          default:           return { listedAt: 'desc' as const };
+        }
+      })();
+
+      fastify.log.info({ query, where, page, limit, sort: query.sort }, 'Search request received');
 
       const [items, total] = await Promise.all([
         prisma.property.findMany({
           where,
           skip,
           take: limit,
-          orderBy: { listedAt: 'desc' },
+          orderBy,
         }),
         prisma.property.count({ where }),
       ]);
