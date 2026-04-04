@@ -251,6 +251,8 @@ The dashboard now turns saved searches into a lightweight alerting surface:
 - The count is **de-duplicated across saved searches** so the same property is not double-counted
 - Already-favorited properties are excluded from the headline **New Matches** number
 - A **Recent Matches** section previews fresh listings grouped by saved search and links directly to the property detail page or full search results
+- **Sort order is persisted** with each saved search — re-running it from the dashboard restores the original sort in the URL, and the dashboard match-preview fetches honour it too
+- Where a non-default sort was saved, a **"Sorted by: …"** label is shown on both the Recent Matches and Saved Searches cards so users know what ordering to expect
 
 This is an MVP-style preview layer built on top of the existing `/api/search` endpoint — no extra schema or background jobs required yet.
 
