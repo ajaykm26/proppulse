@@ -284,12 +284,31 @@ When results are displayed, a **Sort by** dropdown appears to the right of the r
 
 | Sort option | URL value | Behaviour |
 |-------------|-----------|-----------|
-| Best match (default) | *(omitted)* | Newest listings first |
-| Newest | `sort=newest` | Newest listings first (explicit) |
+| Best match (default) | *(omitted)* | Relevance-ranked — see below |
+| Newest | `sort=newest` | Newest listings first |
 | Price: Low to High | `sort=price-asc` | Cheapest listings first |
 | Price: High to Low | `sort=price-desc` | Most expensive listings first |
 
-The `sort` parameter is preserved across filter changes and page navigation. When no `sort` param is present the API defaults to newest-first, preserving the original behavior.
+The `sort` parameter is preserved across filter changes and page navigation.
+
+#### How Best Match Works
+
+When no explicit sort is chosen (or `sort=best-match`), the API fetches up to **500 matching candidates** from the database and ranks them in-process using a deterministic relevance score. Each property earns points across several dimensions:
+
+| Signal | Max pts | Notes |
+|--------|---------|-------|
+| Listing status | 20 | Active = 20, Pending = 8, others = 0 |
+| Recency | 15 | Decays linearly to 0 at 90 days since listing |
+| Keyword in address | 15 | Free-text query present in address string |
+| Keyword in city / zip | 12 ea | Free-text query matches city or zip code |
+| Keyword in AI summary | 8 | Free-text query found in `aiSummary` |
+| Keyword in state | 5 | Free-text query matches state abbreviation |
+| Structured city match | 10 | Parsed city equals property city |
+| Structured zip match | 15 | Parsed zip code matches exactly |
+| Structured state match | 5 | Parsed state matches |
+| Price-range proximity | 10 | Distance from the midpoint of requested price range |
+
+Results within the same score are broken by `listedAt` descending. The candidate-pool cap (500) means best-match pagination is accurate for any filter set returning ≤ 500 properties; if a filter regularly produces larger sets, the top pages are still well-ranked but deep pages may not see every possible result — a trade-off documented in the source code.
 
 ### Pagination
 
