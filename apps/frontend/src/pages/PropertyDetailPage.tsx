@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import type { Property, ApiResponse, PropPulseScore, SavedProperty, CreateSavedPropertyInput } from '@proppulse/shared';
+import { InvestmentCalculator } from '../components/InvestmentCalculator';
 
 function formatPrice(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -211,6 +212,9 @@ export function PropertyDetailPage() {
           <p className="text-sm text-blue-700 leading-relaxed">{property.aiSummary}</p>
         </div>
       )}
+
+      {/* Investment Calculator */}
+      <InvestmentCalculator priceCents={property.priceCents} />
 
       {/* PropPulse Score */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6">
