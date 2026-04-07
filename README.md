@@ -164,7 +164,19 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 
 ## Investment Calculator
 
-The property detail page also includes a client-side **Investment Calculator** that lets investors model returns without leaving the page.
+The property detail page includes a client-side **Investment Calculator** that lets investors model returns without leaving the page. All calculations are entirely frontend — no backend call required.
+
+### Scenario Presets
+
+Three one-click presets instantly populate all key assumptions so you can compare scenarios at a glance:
+
+| Preset | Down Payment | Rate | Vacancy | Maintenance | Rent |
+|--------|-------------|------|---------|-------------|------|
+| 🛡️ **Conservative** | 25% | 7.75% | 8% | 12% of rent | −5% |
+| 📊 **Base Case** | 20% | 7.0% | 5% | 10% of rent | default |
+| 🚀 **Aggressive** | 15% | 6.25% | 3% | 8% of rent | +5% |
+
+Editing any input after applying a preset switches to "Custom" mode, preserving your changes.
 
 ### Inputs (all editable)
 
@@ -194,7 +206,14 @@ The property detail page also includes a client-side **Investment Calculator** t
 | **Cash-on-Cash Return** | Annual cash flow ÷ cash invested (down payment) |
 | **DSCR** | NOI ÷ monthly mortgage; ≥ 1.25 is typical lender floor |
 
-All metrics update live as inputs change. No backend call is required — the calculator is entirely client-side.
+### Sensitivity Analysis
+
+An expandable **Sensitivity Analysis** grid shows projected monthly cash flow across a 5×5 matrix of rent and interest-rate variations centered on the current assumptions:
+
+- **Rows**: rent at −10%, −5%, 0% (current), +5%, +10%
+- **Columns**: interest rate at −1 pp, −0.5 pp, 0 (current), +0.5 pp, +1 pp
+
+Cells are color-coded green (positive) through red (negative) so you can immediately see the range of outcomes and identify break-even thresholds. The current scenario cell is outlined for reference.
 
 ## API Routes
 
