@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import type { Property, ApiResponse, PropPulseScore, SavedProperty, CreateSavedPropertyInput } from '@proppulse/shared';
 import { InvestmentCalculator } from '../components/InvestmentCalculator';
+import { ComparablesCard } from '../components/ComparablesCard';
 
 function formatPrice(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -215,6 +216,9 @@ export function PropertyDetailPage() {
 
       {/* Investment Calculator */}
       <InvestmentCalculator priceCents={property.priceCents} />
+
+      {/* Market Context & Comparables */}
+      <ComparablesCard propertyId={property.id} />
 
       {/* PropPulse Score */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6">

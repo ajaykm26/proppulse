@@ -162,6 +162,75 @@ curl -X POST "http://localhost:3001/api/properties/<propertyId>/score" \
 
 On the frontend, the property detail page (`/properties/:id`) exposes a **PropPulse Score** section with a button that calls this endpoint and renders the score, summary, and pros/cons with loading/error states.
 
+## Market Context & Comparables
+
+The property detail page includes a **Market Context & Comparables** section that automatically loads comparable listings and a quick market snapshot for the current property.
+
+### Endpoint
+
+```bash
+GET /api/properties/:id/comparables
+```
+
+Returns 404 if the property does not exist.  Otherwise returns up to **4 comparable properties** drawn from the same city and state, plus a summary object.
+
+**Matching logic (two-pass):**
+
+1. **Strict pass** — same `propertyType` and bedroom count within ±1, ranked by price proximity.
+2. **Loose pass** — fills remaining slots from any same-city/state property, still ranked by price proximity.
+
+**Example response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "comparables": [
+      {
+        "id": "clx...",
+        "address": "456 Park Ave",
+        "city": "Jersey City",
+        "state": "NJ",
+        "zipCode": "07302",
+        "priceCents": 72500000,
+        "bedrooms": 2,
+        "bathrooms": 2,
+        "sqft": 1050,
+        "propertyType": "condo",
+        "status": "active",
+        "matchLabel": "strong",
+        "images": [],
+        "listedAt": "2024-01-15T00:00:00.000Z",
+        "updatedAt": "2024-01-15T00:00:00.000Z"
+      }
+    ],
+    "summary": {
+      "medianComparablePriceCents": 72500000,
+      "averagePricePerSqft": 690,
+      "activeComparableCount": 3,
+      "priceVsMedianPct": 3.4
+    }
+  }
+}
+```
+
+### Market Snapshot Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Median Comp Price** | Median asking price across the returned comparables |
+| **Avg $/sqft** | Average price-per-square-foot across comparables with known sqft |
+| **Comparables Found** | Count of comparable properties returned (up to 4) |
+| **vs. Median** | How the current property's price relates to the median comparable price (positive = above median, shown in red; negative = below, shown in green) |
+
+### Frontend
+
+On the property detail page (`/properties/:id`), the **Market Context & Comparables** card renders between the Investment Calculator and the PropPulse Score.  It shows:
+
+- The four market-snapshot metrics above.
+- A clickable row for each comparable property with address, price, bed/bath/sqft stats, and a match-quality badge (strong / moderate / nearby).  Each row links to that property's own detail page.
+- Loading and error states if the backend is unavailable.
+
 ## Investment Calculator
 
 The property detail page includes a client-side **Investment Calculator** that lets investors model returns without leaving the page. All calculations are entirely frontend — no backend call required.
@@ -222,6 +291,7 @@ Cells are color-coded green (positive) through red (negative) so you can immedia
 | GET | `/health` | — | Health check |
 | POST | `/api/search` | — | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters + sort) |
 | GET | `/api/properties/:id` | — | Get property by ID |
+| GET | `/api/properties/:id/comparables` | — | Get up to 4 comparable properties + market snapshot for a property |
 | POST | `/api/properties/:id/score` | — | Generate a PropPulse investment score + AI narrative for a property |
 | GET | `/api/saved-searches` | ✓ | List the signed-in user's saved searches |
 | POST | `/api/saved-searches` | ✓ | Save the current search criteria to the dashboard |
@@ -236,7 +306,7 @@ Cells are color-coded green (positive) through red (negative) so you can immedia
 |------|-------------|
 | `/` | Landing page with hero section |
 | `/search` | Property search — calls real `/api/search`, renders result cards with heart toggle when signed in |
-| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in, and an **Investment Calculator** with live return metrics |
+| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in, an **Investment Calculator** with live return metrics, a **Market Context & Comparables** section, and a PropPulse Score |
 | `/dashboard` | User dashboard (auth required) — saved properties, saved searches, and recent new-match previews from saved searches |
 
 ## Demo Search Queries
