@@ -114,6 +114,21 @@ function calcMortgagePayment(principal: number, annualRatePct: number, termYears
   return (principal * (r * Math.pow(1 + r, n))) / (Math.pow(1 + r, n) - 1);
 }
 
+function calcCashFlow(a: Assumptions, rentOverride?: number, rateOverride?: number): number {
+  const rent = rentOverride ?? a.monthlyRent;
+  const rate = rateOverride ?? a.interestRatePct;
+  const downAmt = a.purchasePrice * (a.downPaymentPct / 100);
+  const loan = a.purchasePrice - downAmt;
+  const mortgage = calcMortgagePayment(loan, rate, a.loanTermYears);
+  const monthlyTax = (a.purchasePrice * (a.propertyTaxPct / 100)) / 12;
+  const maintenance = rent * (a.maintenancePct / 100);
+  const vacancy = rent * (a.vacancyPct / 100);
+  const opExpenses = monthlyTax + a.insuranceMonthly + maintenance + a.hoaMonthly;
+  const effectiveIncome = rent - vacancy;
+  const noi = effectiveIncome - opExpenses;
+  return noi - mortgage;
+}
+
 function fmt(n: number, opts?: Intl.NumberFormatOptions): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0, ...opts }).format(n);
 }
@@ -126,8 +141,156 @@ function fmtPct(n: number, decimals = 2): string {
   return `${n.toFixed(decimals)}%`;
 }
 
+// ---------------------------------------------------------------------------
+// Scenario Presets
+// ---------------------------------------------------------------------------
+
+type PresetKey = 'conservative' | 'baseCase' | 'aggressive';
+
+interface Preset {
+  label: string;
+  description: string;
+  icon: string;
+  buttonClass: string;
+  activeClass: string;
+  build: (basePrice: number, baseRent: number) => Partial<Assumptions>;
+}
+
+const PRESETS: Record<PresetKey, Preset> = {
+  conservative: {
+    label: 'Conservative',
+    description: 'Stress-test: higher costs, lower rent, tighter financing.',
+    icon: '🛡️',
+    buttonClass: 'border-amber-200 text-amber-800 hover:bg-amber-50 bg-white',
+    activeClass: 'border-amber-400 bg-amber-50 text-amber-900 ring-1 ring-amber-300',
+    build: (_basePrice, baseRent) => ({
+      downPaymentPct: 25,
+      interestRatePct: 7.75,
+      vacancyPct: 8,
+      maintenancePct: 12,
+      monthlyRent: Math.round((baseRent * 0.95) / 50) * 50,
+    }),
+  },
+  baseCase: {
+    label: 'Base Case',
+    description: 'Market-rate defaults — a realistic starting point.',
+    icon: '📊',
+    buttonClass: 'border-blue-200 text-blue-800 hover:bg-blue-50 bg-white',
+    activeClass: 'border-blue-400 bg-blue-50 text-blue-900 ring-1 ring-blue-300',
+    build: (_basePrice, baseRent) => ({
+      downPaymentPct: 20,
+      interestRatePct: 7.0,
+      vacancyPct: 5,
+      maintenancePct: 10,
+      monthlyRent: baseRent,
+    }),
+  },
+  aggressive: {
+    label: 'Aggressive',
+    description: 'Optimistic: lower financing costs, premium rent, low vacancy.',
+    icon: '🚀',
+    buttonClass: 'border-green-200 text-green-800 hover:bg-green-50 bg-white',
+    activeClass: 'border-green-400 bg-green-50 text-green-900 ring-1 ring-green-300',
+    build: (_basePrice, baseRent) => ({
+      downPaymentPct: 15,
+      interestRatePct: 6.25,
+      vacancyPct: 3,
+      maintenancePct: 8,
+      monthlyRent: Math.round((baseRent * 1.05) / 50) * 50,
+    }),
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Sensitivity Grid
+// ---------------------------------------------------------------------------
+
+const RENT_DELTAS = [-10, -5, 0, 5, 10]; // % change from current rent
+const RATE_DELTAS = [-1.0, -0.5, 0, 0.5, 1.0]; // pct-point change from current rate
+
+function SensitivityGrid({ assumptions }: { assumptions: Assumptions }) {
+  const grid = useMemo(() => {
+    return RENT_DELTAS.map((rd) => {
+      const rent = assumptions.monthlyRent * (1 + rd / 100);
+      return RATE_DELTAS.map((rateDelta) => {
+        const rate = Math.max(0, assumptions.interestRatePct + rateDelta);
+        return calcCashFlow(assumptions, rent, rate);
+      });
+    });
+  }, [assumptions]);
+
+  function cellStyle(cf: number): string {
+    if (cf >= 500) return 'bg-green-100 text-green-800 font-semibold';
+    if (cf >= 200) return 'bg-green-50 text-green-700';
+    if (cf >= 0) return 'bg-emerald-50 text-emerald-700';
+    if (cf >= -200) return 'bg-red-50 text-red-700';
+    if (cf >= -500) return 'bg-red-100 text-red-800';
+    return 'bg-red-200 text-red-900 font-semibold';
+  }
+
+  return (
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+        Sensitivity Analysis — Monthly Cash Flow
+      </h3>
+      <p className="text-xs text-gray-400 mb-3">
+        How cash flow shifts as rent and interest rate vary around your current assumptions. Green = positive, red = negative.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr>
+              <th className="text-left pr-3 pb-2 font-medium text-gray-500 whitespace-nowrap">
+                Rent \ Rate
+              </th>
+              {RATE_DELTAS.map((d) => (
+                <th
+                  key={d}
+                  className={`pb-2 px-2 text-center font-medium whitespace-nowrap ${d === 0 ? 'text-gray-800' : 'text-gray-500'}`}
+                >
+                  {d === 0 ? `${assumptions.interestRatePct.toFixed(2)}%` : `${d > 0 ? '+' : ''}${d}pp`}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {RENT_DELTAS.map((rd, ri) => (
+              <tr key={rd}>
+                <td className={`pr-3 py-1 font-medium whitespace-nowrap ${rd === 0 ? 'text-gray-800' : 'text-gray-500'}`}>
+                  {rd === 0
+                    ? `${fmtCurrency(assumptions.monthlyRent)}/mo`
+                    : `${rd > 0 ? '+' : ''}${rd}%`}
+                </td>
+                {grid[ri].map((cf, ci) => {
+                  const isCurrentCell = rd === 0 && RATE_DELTAS[ci] === 0;
+                  return (
+                    <td
+                      key={ci}
+                      className={`py-1 px-2 text-center rounded ${cellStyle(cf)} ${isCurrentCell ? 'ring-2 ring-offset-1 ring-gray-400' : ''}`}
+                    >
+                      {fmtCurrency(cf)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400 mt-2">
+        "pp" = percentage-point shift from current rate ({assumptions.interestRatePct.toFixed(2)}%). Current scenario is outlined.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
+
 export function InvestmentCalculator({ priceCents }: Props) {
   const priceUSD = Math.round(priceCents / 100);
+  const defaultRent = Math.max(1000, Math.round((priceUSD * 0.005) / 50) * 50);
 
   const [assumptions, setAssumptions] = useState<Assumptions>({
     purchasePrice: priceUSD,
@@ -135,7 +298,7 @@ export function InvestmentCalculator({ priceCents }: Props) {
     interestRatePct: 7.0,
     loanTermYears: 30,
     // Rough default rent: ~0.5% of purchase price (NYC-area rule of thumb)
-    monthlyRent: Math.max(1000, Math.round((priceUSD * 0.005) / 50) * 50),
+    monthlyRent: defaultRent,
     vacancyPct: 5,
     propertyTaxPct: 1.2,
     insuranceMonthly: 150,
@@ -143,8 +306,18 @@ export function InvestmentCalculator({ priceCents }: Props) {
     hoaMonthly: 0,
   });
 
+  // Track which preset is active (null = custom / user-modified)
+  const [activePreset, setActivePreset] = useState<PresetKey | null>('baseCase');
+
   function set<K extends keyof Assumptions>(key: K, value: Assumptions[K]) {
     setAssumptions((prev) => ({ ...prev, [key]: value }));
+    setActivePreset(null); // user edited manually → no longer a clean preset
+  }
+
+  function applyPreset(key: PresetKey) {
+    const overrides = PRESETS[key].build(assumptions.purchasePrice, defaultRent);
+    setAssumptions((prev) => ({ ...prev, ...overrides }));
+    setActivePreset(key);
   }
 
   const metrics = useMemo(() => {
@@ -208,6 +381,7 @@ export function InvestmentCalculator({ priceCents }: Props) {
   }, [assumptions]);
 
   const [expanded, setExpanded] = useState(true);
+  const [showSensitivity, setShowSensitivity] = useState(false);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl mb-6 overflow-hidden">
@@ -239,6 +413,40 @@ export function InvestmentCalculator({ priceCents }: Props) {
 
       {expanded && (
         <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-6">
+
+          {/* ----------------------------------------------------------------
+              Scenario Presets
+          ---------------------------------------------------------------- */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              Scenario Presets
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.entries(PRESETS) as [PresetKey, Preset][]).map(([key, preset]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => applyPreset(key)}
+                  className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left text-xs transition-all ${
+                    activePreset === key ? preset.activeClass : preset.buttonClass
+                  }`}
+                >
+                  <span className="font-semibold">
+                    {preset.icon} {preset.label}
+                  </span>
+                  <span className="text-gray-500 leading-snug hidden sm:block">
+                    {preset.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {activePreset === null && (
+              <p className="text-xs text-gray-400 mt-1.5">
+                Custom — you've edited assumptions manually.
+              </p>
+            )}
+          </div>
+
           {/* Assumptions */}
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
@@ -482,6 +690,43 @@ export function InvestmentCalculator({ priceCents }: Props) {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* ----------------------------------------------------------------
+              Sensitivity Analysis
+          ---------------------------------------------------------------- */}
+          <div className="border border-gray-100 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+              onClick={() => setShowSensitivity((v) => !v)}
+            >
+              <div>
+                <span className="text-xs font-semibold text-gray-700">
+                  📉 Sensitivity Analysis
+                </span>
+                <span className="ml-2 text-xs text-gray-400">
+                  Cash flow across rent &amp; rate scenarios
+                </span>
+              </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${showSensitivity ? 'rotate-180' : ''}`}
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+            {showSensitivity && (
+              <div className="border-t border-gray-100 px-4 pb-4 pt-3">
+                <SensitivityGrid assumptions={assumptions} />
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-gray-400">
