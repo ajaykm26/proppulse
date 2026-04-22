@@ -79,7 +79,7 @@ export async function savedSearchRoutes(fastify: FastifyInstance): Promise<void>
         data: {
           userId: appUser.id,
           name: name.trim(),
-          query,
+          query: query as object,
         },
       });
 

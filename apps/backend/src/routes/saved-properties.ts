@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import type { ApiResponse, CreateSavedPropertyInput, Property, SavedProperty } from '@proppulse/shared';
+import type { ApiResponse, CreateSavedPropertyInput, DealStatus, Property, SavedProperty, UpdateSavedPropertyInput } from '@proppulse/shared';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -41,17 +41,25 @@ function mapProperty(p: PrismaProperty): Property {
   };
 }
 
+const VALID_DEAL_STATUSES: DealStatus[] = ['watching', 'analyzing', 'offer_made', 'passed'];
+
 function mapSavedProperty(record: {
   id: string;
   propertyId: string;
   property: PrismaProperty;
+  notes: string | null;
+  dealStatus: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }): SavedProperty {
   return {
     id: record.id,
     propertyId: record.propertyId,
     property: mapProperty(record.property),
+    notes: record.notes ?? undefined,
+    dealStatus: (record.dealStatus as DealStatus | null) ?? undefined,
     createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
   };
 }
 
@@ -116,6 +124,42 @@ export async function savedPropertyRoutes(fastify: FastifyInstance): Promise<voi
       });
 
       return { success: true, data: mapSavedProperty(saved) };
+    },
+  );
+
+  // Update notes and/or dealStatus for a saved property
+  fastify.patch<{ Params: { id: string }; Body: UpdateSavedPropertyInput }>(
+    '/api/saved-properties/:id',
+    { preHandler: requireAuth },
+    async (request, reply): Promise<ApiResponse<SavedProperty>> => {
+      const user = request.user;
+      if (!user) return reply.status(401).send({ success: false, error: 'Unauthorized' });
+
+      const { notes, dealStatus } = request.body ?? {};
+
+      if (dealStatus !== undefined && dealStatus !== null && !VALID_DEAL_STATUSES.includes(dealStatus)) {
+        return reply.status(400).send({ success: false, error: 'Invalid dealStatus value' });
+      }
+
+      const appUser = await getOrCreateUser(user.clerkId, user.email);
+      const existing = await prisma.savedProperty.findFirst({
+        where: { id: request.params.id, userId: appUser.id },
+      });
+
+      if (!existing) {
+        return reply.status(404).send({ success: false, error: 'Saved property not found' });
+      }
+
+      const updated = await prisma.savedProperty.update({
+        where: { id: existing.id },
+        data: {
+          ...(notes !== undefined ? { notes: notes ?? null } : {}),
+          ...(dealStatus !== undefined ? { dealStatus: dealStatus ?? null } : {}),
+        },
+        include: { property: true },
+      });
+
+      return { success: true, data: mapSavedProperty(updated) };
     },
   );
 
