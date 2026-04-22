@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { Property, ApiResponse, PropPulseScore } from '@proppulse/shared';
+import { useAuth, useUser } from '@clerk/clerk-react';
+import type { Property, ApiResponse, PropPulseScore, SavedProperty, CreateSavedPropertyInput } from '@proppulse/shared';
+import { InvestmentCalculator } from '../components/InvestmentCalculator';
+import { ComparablesCard } from '../components/ComparablesCard';
 
 function formatPrice(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -19,6 +22,8 @@ const statusStyles: Record<string, string> = {
 
 export function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { isSignedIn } = useUser();
+  const { getToken } = useAuth();
   const [property, setProperty] = useState<Property | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +31,61 @@ export function PropertyDetailPage() {
   const [score, setScore] = useState<PropPulseScore | null>(null);
   const [isScoring, setIsScoring] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
+
+  // undefined = not yet loaded, null = not saved, string = savedPropertyId
+  const [savedPropertyId, setSavedPropertyId] = useState<string | null | undefined>(undefined);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!id || !isSignedIn) {
+      setSavedPropertyId(isSignedIn === false ? null : undefined);
+      return;
+    }
+
+    async function checkSaved() {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/saved-properties', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = (await res.json()) as ApiResponse<SavedProperty[]>;
+        if (data.success && data.data) {
+          const match = data.data.find((sp) => sp.propertyId === id);
+          setSavedPropertyId(match ? match.id : null);
+        }
+      } catch {
+        setSavedPropertyId(null);
+      }
+    }
+
+    void checkSaved();
+  }, [id, isSignedIn, getToken]);
+
+  async function handleToggleSave() {
+    if (!id) return;
+    setIsSaving(true);
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      if (savedPropertyId) {
+        await fetch(`/api/saved-properties/${savedPropertyId}`, { method: 'DELETE', headers });
+        setSavedPropertyId(null);
+      } else {
+        const payload: CreateSavedPropertyInput = { propertyId: id };
+        const res = await fetch('/api/saved-properties', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json()) as ApiResponse<SavedProperty>;
+        if (data.success && data.data) setSavedPropertyId(data.data.id);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -94,14 +154,41 @@ export function PropertyDetailPage() {
             {property.address}, {property.city}, {property.state} {property.zipCode}
           </p>
         </div>
-        <span
-          className={[
-            'text-sm font-medium px-3 py-1 rounded-full capitalize whitespace-nowrap',
-            statusStyles[property.status] ?? 'bg-gray-100 text-gray-800',
-          ].join(' ')}
-        >
-          {property.status}
-        </span>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {isSignedIn && savedPropertyId !== undefined && (
+            <button
+              type="button"
+              onClick={() => void handleToggleSave()}
+              disabled={isSaving}
+              aria-label={savedPropertyId ? 'Unsave property' : 'Save property'}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {savedPropertyId ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-red-500">
+                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                  </svg>
+                  Saved
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                  </svg>
+                  Save
+                </>
+              )}
+            </button>
+          )}
+          <span
+            className={[
+              'text-sm font-medium px-3 py-1 rounded-full capitalize whitespace-nowrap',
+              statusStyles[property.status] ?? 'bg-gray-100 text-gray-800',
+            ].join(' ')}
+          >
+            {property.status}
+          </span>
+        </div>
       </div>
 
       {/* Stats grid */}
@@ -126,6 +213,12 @@ export function PropertyDetailPage() {
           <p className="text-sm text-blue-700 leading-relaxed">{property.aiSummary}</p>
         </div>
       )}
+
+      {/* Investment Calculator */}
+      <InvestmentCalculator priceCents={property.priceCents} />
+
+      {/* Market Context & Comparables */}
+      <ComparablesCard propertyId={property.id} />
 
       {/* PropPulse Score */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6">
