@@ -307,7 +307,7 @@ Cells are color-coded green (positive) through red (negative) so you can immedia
 | `/` | Landing page with hero section |
 | `/search` | Property search — calls real `/api/search`, renders result cards with heart toggle when signed in |
 | `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in, an **Investment Calculator** with live return metrics, a **Market Context & Comparables** section, and a PropPulse Score |
-| `/dashboard` | User dashboard (auth required) — saved properties, saved searches, and recent new-match previews from saved searches |
+| `/dashboard` | User dashboard (auth required) — Portfolio Snapshot metrics, Search Opportunity Pulse, saved properties, saved searches, and recent new-match previews from saved searches |
 
 ## Demo Search Queries
 
@@ -366,9 +366,31 @@ When a search returns results, a compact **Search Insights** panel appears above
 
 A plain-English summary sentence beneath the cards helps investors and homebuyers quickly interpret the result set — noting price anchors, listing volume, and demand signals like the share of listings already under contract.
 
-### Dashboard Match Previews
+### Dashboard Intelligence Panels
 
-The dashboard now turns saved searches into a lightweight alerting surface:
+The dashboard now provides three layers of intelligence on top of saved data:
+
+#### Portfolio Snapshot
+
+A four-metric card row computed client-side from saved properties:
+
+- **Total Portfolio Value** — sum of all saved property prices
+- **Median Price** — middle price across saved properties (sorted ascending)
+- **Top City** — the city with the most saved properties, plus a count of unique cities
+- **Avg $/sqft** — average price per square foot for saved properties that have sqft data
+
+A plain-English insight sentence beneath the cards summarises the portfolio in one line (city spread, median price, price-per-sqft). All calculations are client-side — no additional backend endpoints.
+
+#### Search Opportunity Pulse
+
+A compact panel that surfaces which saved search is most active:
+
+- **Total Fresh Matches** — de-duplicated count of new listings across all saved searches
+- **Hottest Search** — the saved search with the most fresh (unseen) matches, with a direct link to run it
+
+#### Dashboard Match Previews
+
+The dashboard turns saved searches into a lightweight alerting surface:
 
 - **New Matches** counts listings whose `listedAt` date is newer than when the search was saved
 - The count is **de-duplicated across saved searches** so the same property is not double-counted
@@ -377,7 +399,7 @@ The dashboard now turns saved searches into a lightweight alerting surface:
 - **Sort order is persisted** with each saved search — re-running it from the dashboard restores the original sort in the URL, and the dashboard match-preview fetches honour it too
 - Where a non-default sort was saved, a **"Sorted by: …"** label is shown on both the Recent Matches and Saved Searches cards so users know what ordering to expect
 
-This is an MVP-style preview layer built on top of the existing `/api/search` endpoint — no extra schema or background jobs required yet.
+All three panels are built on top of the existing `/api/search` and saved-data endpoints — no extra schema or background jobs required.
 
 ### URL-Synced State
 
