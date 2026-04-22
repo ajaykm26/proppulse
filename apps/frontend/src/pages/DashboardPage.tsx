@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, useUser, RedirectToSignIn } from '@clerk/clerk-react';
-import type { ApiResponse, Property, SavedProperty, SavedSearch, SearchQuery, SearchResult } from '@proppulse/shared';
+import type { ApiResponse, Property, SavedProperty, SavedSearch, SearchQuery, SearchResult, SortOption } from '@proppulse/shared';
 
 interface SavedSearchMatchPreview {
   search: SavedSearch;
@@ -23,6 +23,18 @@ function describeQuery(search: SavedSearch): string {
   return parts.join(' • ') || 'Custom criteria';
 }
 
+const SORT_LABELS: Record<SortOption, string> = {
+  'best-match': 'Best match',
+  newest: 'Newest first',
+  'price-asc': 'Price: Low to High',
+  'price-desc': 'Price: High to Low',
+};
+
+function sortLabel(sort: SortOption | undefined): string | null {
+  if (!sort || sort === 'best-match') return null;
+  return SORT_LABELS[sort];
+}
+
 function savedSearchToUrl(search: SavedSearch): string {
   const params = new URLSearchParams();
   const query = search.query;
@@ -35,6 +47,7 @@ function savedSearchToUrl(search: SavedSearch): string {
   if (query.propertyType) params.set('type', query.propertyType);
   if (query.status) params.set('status', query.status);
   if (query.page && query.page > 1) params.set('page', String(query.page));
+  if (query.sort && query.sort !== 'best-match') params.set('sort', query.sort);
 
   const queryString = params.toString();
   return queryString ? `/search?${queryString}` : '/search';
@@ -323,6 +336,11 @@ export function DashboardPage() {
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">{describeQuery(preview.search)}</p>
+                      {sortLabel(preview.search.query.sort) && (
+                        <p className="text-xs text-primary-600 mt-1">
+                          Sorted by: {sortLabel(preview.search.query.sort)}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-400 mt-2">
                         {preview.total} total match{preview.total === 1 ? '' : 'es'} · saved{' '}
                         {new Date(preview.search.createdAt).toLocaleDateString('en-US', {
@@ -488,6 +506,11 @@ export function DashboardPage() {
                 <div>
                   <div className="font-medium text-gray-900">{search.name}</div>
                   <div className="text-sm text-gray-500 mt-1">{describeQuery(search)}</div>
+                  {sortLabel(search.query.sort) && (
+                    <div className="text-xs text-primary-600 mt-1">
+                      Sorted by: {sortLabel(search.query.sort)}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-400 mt-2">
                     Saved {new Date(search.createdAt).toLocaleDateString('en-US', {
                       year: 'numeric',
