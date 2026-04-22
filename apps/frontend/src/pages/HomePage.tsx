@@ -39,7 +39,7 @@ export function HomePage() {
           <div className="max-w-2xl mx-auto">
             <SearchBar
               onSearch={handleSearch}
-              placeholder="Try "3BR condo in Brooklyn under $1M"..."
+              placeholder={'Try "3BR condo in Brooklyn under $1M"...'}
             />
           </div>
         </div>
