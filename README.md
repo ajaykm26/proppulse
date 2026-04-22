@@ -162,6 +162,40 @@ curl -X POST "http://localhost:3001/api/properties/<propertyId>/score" \
 
 On the frontend, the property detail page (`/properties/:id`) exposes a **PropPulse Score** section with a button that calls this endpoint and renders the score, summary, and pros/cons with loading/error states.
 
+## Investment Calculator
+
+The property detail page also includes a client-side **Investment Calculator** that lets investors model returns without leaving the page.
+
+### Inputs (all editable)
+
+| Input | Default | Notes |
+|-------|---------|-------|
+| Purchase price | Property list price | Pre-filled from the listing |
+| Down payment | 20% | Common conventional mortgage threshold |
+| Interest rate | 7.0% | Approximate current market rate |
+| Loan term | 30 years | Standard amortization |
+| Monthly rent | ~0.5% of price | Rough rule-of-thumb for NYC metro |
+| Vacancy | 5% | ≈ 18 days per year |
+| Property tax | 1.2% / yr | Varies widely by municipality |
+| Insurance | $150 / mo | Landlord policy estimate |
+| Maintenance | 10% of rent | Ongoing repairs allowance |
+| HOA | $0 / mo | Enter 0 if not applicable |
+
+### Calculated Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Loan Amount** | Purchase price minus down payment |
+| **Monthly Mortgage** | Principal & interest (standard amortization) |
+| **Estimated Monthly Expenses** | Tax + insurance + maintenance + HOA |
+| **NOI (monthly / annual)** | Effective income minus operating expenses (excl. mortgage) |
+| **Monthly Cash Flow** | NOI minus mortgage payment |
+| **Cap Rate** | Annualised NOI ÷ purchase price |
+| **Cash-on-Cash Return** | Annual cash flow ÷ cash invested (down payment) |
+| **DSCR** | NOI ÷ monthly mortgage; ≥ 1.25 is typical lender floor |
+
+All metrics update live as inputs change. No backend call is required — the calculator is entirely client-side.
+
 ## API Routes
 
 | Method | Path | Auth | Description |
@@ -183,7 +217,7 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 |------|-------------|
 | `/` | Landing page with hero section |
 | `/search` | Property search — calls real `/api/search`, renders result cards with heart toggle when signed in |
-| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in |
+| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in, and an **Investment Calculator** with live return metrics |
 | `/dashboard` | User dashboard (auth required) — saved properties, saved searches, and recent new-match previews from saved searches |
 
 ## Demo Search Queries
