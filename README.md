@@ -167,7 +167,7 @@ On the frontend, the property detail page (`/properties/:id`) exposes a **PropPu
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/health` | — | Health check |
-| POST | `/api/search` | — | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters) |
+| POST | `/api/search` | — | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters + sort) |
 | GET | `/api/properties/:id` | — | Get property by ID |
 | POST | `/api/properties/:id/score` | — | Generate a PropPulse investment score + AI narrative for a property |
 | GET | `/api/saved-searches` | ✓ | List the signed-in user's saved searches |
@@ -230,6 +230,19 @@ The backend stores saved properties in the `saved_properties` table with a uniqu
 
 When signed in, the search page shows a **Save search** button that stores the current query + filters to the user's dashboard. Saved searches can be re-run later or deleted from `/dashboard`.
 
+### Search Insights
+
+When a search returns results, a compact **Search Insights** panel appears above the property grid. It computes four metrics client-side from the current page of results — no backend changes required:
+
+| Metric | Description |
+|--------|-------------|
+| **Median Price** | Median listing price of properties on the current page |
+| **Avg $/sqft** | Average price-per-square-foot across listings with known sqft |
+| **Newest Listing** | Date of the most recently listed property on this page |
+| **Listing Mix** | Dominant property type and its share of current-page results |
+
+A plain-English summary sentence beneath the cards helps investors and homebuyers quickly interpret the result set — noting price anchors, listing volume, and demand signals like the share of listings already under contract.
+
 ### Dashboard Match Previews
 
 The dashboard now turns saved searches into a lightweight alerting surface:
@@ -260,7 +273,21 @@ Parameters:
 | `minBaths` | Minimum bathrooms |
 | `type` | Property type |
 | `status` | Listing status |
+| `sort` | Sort order (see below) |
 | `page` | Current page number |
+
+### Sorting
+
+When results are displayed, a **Sort by** dropdown appears to the right of the result count. Changing the sort option resets to page 1 and re-fetches results.
+
+| Sort option | URL value | Behaviour |
+|-------------|-----------|-----------|
+| Best match (default) | *(omitted)* | Newest listings first |
+| Newest | `sort=newest` | Newest listings first (explicit) |
+| Price: Low to High | `sort=price-asc` | Cheapest listings first |
+| Price: High to Low | `sort=price-desc` | Most expensive listings first |
+
+The `sort` parameter is preserved across filter changes and page navigation. When no `sort` param is present the API defaults to newest-first, preserving the original behavior.
 
 ### Pagination
 
