@@ -41,6 +41,9 @@ export type PropertyType = 'house' | 'condo' | 'townhouse' | 'multi-family' | 'l
 
 export type PropertyStatus = 'active' | 'pending' | 'sold' | 'off-market';
 
+/** Sort order for search results */
+export type SortOption = 'best-match' | 'newest' | 'price-asc' | 'price-desc';
+
 // ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
@@ -65,6 +68,8 @@ export interface SearchQuery {
   page?: number;
   /** Results per page (default 20, max 100) */
   limit?: number;
+  /** Sort order (default: best-match, i.e. newest first) */
+  sort?: SortOption;
 }
 
 /** The result of a property search */

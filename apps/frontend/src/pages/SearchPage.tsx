@@ -17,6 +17,7 @@ import type {
   PropertyType,
   PropertyStatus,
   SavedSearch,
+  SortOption,
 } from '@proppulse/shared';
 
 function parseQuery(q: string): Partial<SearchQuery> {
@@ -55,7 +56,7 @@ function paramsToFilters(p: URLSearchParams): FilterValues {
   };
 }
 
-function buildParams(q: string, f: FilterValues, page?: number): Record<string, string> {
+function buildParams(q: string, f: FilterValues, page?: number, sort?: SortOption): Record<string, string> {
   const params: Record<string, string> = {};
   if (q) params.q = q;
   if (f.minPrice) params.minPrice = f.minPrice;
@@ -65,10 +66,11 @@ function buildParams(q: string, f: FilterValues, page?: number): Record<string, 
   if (f.propertyType) params.type = f.propertyType;
   if (f.status) params.status = f.status;
   if (page && page > 1) params.page = String(page);
+  if (sort && sort !== 'best-match') params.sort = sort;
   return params;
 }
 
-function filtersToSearchQuery(q: string, page: number, f: FilterValues): SearchQuery {
+function filtersToSearchQuery(q: string, page: number, f: FilterValues, sort?: SortOption): SearchQuery {
   return {
     ...parseQuery(q),
     ...(f.minPrice && { minPriceCents: Math.round(parseFloat(f.minPrice) * 100) }),
@@ -79,6 +81,7 @@ function filtersToSearchQuery(q: string, page: number, f: FilterValues): SearchQ
     ...(f.status && { status: f.status as PropertyStatus }),
     page,
     limit: 20,
+    ...(sort && sort !== 'best-match' && { sort }),
   };
 }
 
@@ -171,21 +174,22 @@ export function SearchPage() {
     const q = searchParams.get('q') ?? '';
     const page = parseInt(searchParams.get('page') ?? '1', 10);
     const f = paramsToFilters(searchParams);
+    const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
 
     setFilters(f);
 
     const hasInput = !!q || hasActiveFilters(f);
     if (hasInput) {
-      void runSearch(q, page, f);
+      void runSearch(q, page, f, sort);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  async function runSearch(q: string, page: number, f: FilterValues) {
+  async function runSearch(q: string, page: number, f: FilterValues, sort?: SortOption) {
     setIsLoading(true);
     setError(null);
     try {
-      const body = filtersToSearchQuery(q, page, f);
+      const body = filtersToSearchQuery(q, page, f, sort);
       const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -202,25 +206,35 @@ export function SearchPage() {
   }
 
   function handleSearch(newQ: string) {
-    setSearchParams(buildParams(newQ, filters));
+    const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
+    setSearchParams(buildParams(newQ, filters, undefined, sort));
   }
 
   function handleApplyFilters(nextFilters?: FilterValues) {
     const q = searchParams.get('q') ?? '';
-    setSearchParams(buildParams(q, nextFilters ?? filters));
+    const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
+    setSearchParams(buildParams(q, nextFilters ?? filters, undefined, sort));
   }
 
   function handlePageChange(newPage: number) {
     const q = searchParams.get('q') ?? '';
     const f = paramsToFilters(searchParams);
-    setSearchParams(buildParams(q, f, newPage));
+    const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
+    setSearchParams(buildParams(q, f, newPage, sort));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function handleSortChange(newSort: SortOption) {
+    const q = searchParams.get('q') ?? '';
+    const f = paramsToFilters(searchParams);
+    setSearchParams(buildParams(q, f, 1, newSort));
   }
 
   async function handleSaveSearch() {
     const q = searchParams.get('q') ?? '';
     const page = parseInt(searchParams.get('page') ?? '1', 10);
-    const query = filtersToSearchQuery(q, page, filters);
+    const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
+    const query = filtersToSearchQuery(q, page, filters, sort);
     const payload: CreateSavedSearchInput = {
       name: buildSavedSearchName(q, filters),
       query,
@@ -255,6 +269,7 @@ export function SearchPage() {
   }
 
   const q = searchParams.get('q') ?? '';
+  const sort = (searchParams.get('sort') as SortOption | null) ?? 'best-match';
   const activeFilters = paramsToFilters(searchParams);
   const hasInput = !!q || hasActiveFilters(activeFilters);
   const saveButtonLabel = useMemo(() => {
@@ -352,10 +367,28 @@ export function SearchPage() {
       {!isLoading && !error && results !== null && results.total > 0 && (
         <>
           <SearchInsights properties={results.properties} total={results.total} />
-          <p className="text-sm text-gray-500 mb-4">
-            {results.total} {results.total === 1 ? 'property' : 'properties'} found
-            {results.totalPages > 1 && ` · page ${results.page} of ${results.totalPages}`}
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-gray-500">
+              {results.total} {results.total === 1 ? 'property' : 'properties'} found
+              {results.totalPages > 1 && ` · page ${results.page} of ${results.totalPages}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <label htmlFor="sort-select" className="text-sm text-gray-500 whitespace-nowrap">
+                Sort by
+              </label>
+              <select
+                id="sort-select"
+                value={sort}
+                onChange={(e) => handleSortChange(e.target.value as SortOption)}
+                className="text-sm border border-gray-200 rounded-md px-2 py-1 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="best-match">Best match</option>
+                <option value="newest">Newest</option>
+                <option value="price-asc">Price: Low to High</option>
+                <option value="price-desc">Price: High to Low</option>
+              </select>
+            </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {results.properties.map((property) => (
               <PropertyCard
