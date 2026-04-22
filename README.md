@@ -188,6 +188,50 @@ After seeding the database, try these in the search bar:
 - `Metuchen` — walkable NJ with transit access
 - `condo` — free-text search across all property descriptions
 
+## Filters & Pagination
+
+The search page (`/search`) supports advanced filters and pagination, all reflected in the URL so searches are shareable and bookmarkable.
+
+### Using Filters
+
+Click the **Filters** button below the search bar to expand the filter panel. Available filters:
+
+| Filter | Description | Example |
+|--------|-------------|---------|
+| Min Price | Minimum listing price in USD | `500000` |
+| Max Price | Maximum listing price in USD | `1500000` |
+| Min Beds | Minimum number of bedrooms | `2` |
+| Min Baths | Minimum number of bathrooms (supports half-baths) | `1.5` |
+| Type | Property type | `house`, `condo`, `townhouse`, `multi-family`, `land`, `other` |
+| Status | Listing status | `active`, `pending`, `sold`, `off-market` |
+
+Click **Apply Filters** to run a new search with the selected criteria. The active filter indicator (✓) on the button shows when filters are in effect. Use **Clear filters** to reset all filter values.
+
+### URL-Synced State
+
+All search parameters are stored in the URL query string, making searches shareable. For example:
+
+```
+/search?q=Jersey+City&minPrice=400000&maxPrice=900000&minBeds=2&type=condo&status=active
+```
+
+Parameters:
+
+| URL param | Description |
+|-----------|-------------|
+| `q` | Free-text search or location (e.g. `Brooklyn`, `Edison, NJ`) |
+| `minPrice` | Minimum price in USD dollars |
+| `maxPrice` | Maximum price in USD dollars |
+| `minBeds` | Minimum bedrooms |
+| `minBaths` | Minimum bathrooms |
+| `type` | Property type |
+| `status` | Listing status |
+| `page` | Current page number |
+
+### Pagination
+
+When a search returns more than 20 results, **Previous** / **Next** buttons and a page indicator appear below the results grid. The `page` parameter is also reflected in the URL (e.g. `?q=Brooklyn&page=2`).
+
 ## Contributing
 
 This is an MVP foundation. PRs welcome — please open a branch and submit for review rather than pushing directly to `main`.
