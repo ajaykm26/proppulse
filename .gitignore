@@ -37,7 +37,6 @@ Thumbs.db
 *.sw?
 
 # Prisma
-apps/backend/prisma/migrations/
 apps/backend/node_modules/.prisma/
 
 # TypeScript
