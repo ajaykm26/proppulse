@@ -211,6 +211,48 @@ export function DashboardPage() {
     return dedupedPropertyIds.size;
   }, [matchPreviews]);
 
+  const portfolioInsights = useMemo(() => {
+    if (savedProperties.length === 0) return null;
+    const props = savedProperties.map((sp) => sp.property);
+    const totalValueCents = props.reduce((sum, p) => sum + p.priceCents, 0);
+    const sorted = [...props].sort((a, b) => a.priceCents - b.priceCents);
+    const mid = Math.floor(sorted.length / 2);
+    const medianCents =
+      sorted.length % 2 === 0
+        ? Math.round((sorted[mid - 1].priceCents + sorted[mid].priceCents) / 2)
+        : sorted[mid].priceCents;
+    const cityCounts = new Map<string, number>();
+    for (const p of props) {
+      cityCounts.set(p.city, (cityCounts.get(p.city) ?? 0) + 1);
+    }
+    const topCity = [...cityCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const withSqft = props.filter((p) => p.sqft > 0);
+    const avgPricePerSqft =
+      withSqft.length > 0
+        ? Math.round(withSqft.reduce((sum, p) => sum + p.priceCents / p.sqft, 0) / withSqft.length / 100)
+        : null;
+    return { totalValueCents, medianCents, topCity, avgPricePerSqft, count: props.length, uniqueCities: cityCounts.size };
+  }, [savedProperties]);
+
+  const portfolioInsightSentence = useMemo(() => {
+    if (!portfolioInsights) return null;
+    const { count, uniqueCities, topCity, medianCents, avgPricePerSqft } = portfolioInsights;
+    const propWord = count === 1 ? 'property' : 'properties';
+    const cityWord = uniqueCities === 1 ? 'city' : 'cities';
+    const verb = count === 1 ? 'spans' : 'span';
+    let sentence = `Your ${count} saved ${propWord} ${verb} ${uniqueCities} ${cityWord}`;
+    if (topCity && uniqueCities > 1) sentence += `, led by ${topCity}`;
+    sentence += `, with a median price of ${formatPrice(medianCents)}`;
+    if (avgPricePerSqft !== null) sentence += ` and an average of $${avgPricePerSqft.toLocaleString()}/sqft`;
+    return `${sentence}.`;
+  }, [portfolioInsights]);
+
+  const opportunityPulse = useMemo(() => {
+    const sorted = [...matchPreviews].sort((a, b) => b.newMatches.length - a.newMatches.length);
+    const topSearch = sorted[0] && sorted[0].newMatches.length > 0 ? sorted[0] : null;
+    return { totalFreshMatches: newMatchesCount, topSearch };
+  }, [matchPreviews, newMatchesCount]);
+
   async function handleDeleteSavedSearch(id: string) {
     try {
       const token = await getToken();
@@ -391,6 +433,121 @@ export function DashboardPage() {
                   </div>
                 </div>
               ))}
+          </div>
+        )}
+      </div>
+
+      {/* Portfolio Snapshot */}
+      <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm mb-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Portfolio Snapshot</h2>
+          <p className="text-sm text-gray-500 mt-1">Quick metrics across your saved properties.</p>
+        </div>
+
+        {isLoadingProperties ? (
+          <div className="text-center py-8 text-gray-400">Computing your portfolio metrics…</div>
+        ) : !portfolioInsights ? (
+          <div className="text-center py-8 text-gray-400">
+            <div className="text-3xl mb-2">📊</div>
+            <p>No saved properties yet.</p>
+            <p className="text-sm mt-1">Save properties to see portfolio insights here.</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              {[
+                {
+                  label: 'Total Portfolio Value',
+                  value: formatPrice(portfolioInsights.totalValueCents),
+                  sub: `${portfolioInsights.count} ${portfolioInsights.count === 1 ? 'property' : 'properties'}`,
+                },
+                {
+                  label: 'Median Price',
+                  value: formatPrice(portfolioInsights.medianCents),
+                  sub: 'across saved properties',
+                },
+                {
+                  label: 'Top City',
+                  value: portfolioInsights.topCity ?? '—',
+                  sub:
+                    portfolioInsights.uniqueCities > 1
+                      ? `${portfolioInsights.uniqueCities} cities total`
+                      : 'only city saved',
+                },
+                {
+                  label: 'Avg $/sqft',
+                  value:
+                    portfolioInsights.avgPricePerSqft !== null
+                      ? `$${portfolioInsights.avgPricePerSqft.toLocaleString()}`
+                      : '—',
+                  sub:
+                    portfolioInsights.avgPricePerSqft !== null
+                      ? 'among properties with sqft'
+                      : 'sqft data unavailable',
+                },
+              ].map(({ label, value, sub }) => (
+                <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                  <div className="text-xl font-bold text-gray-900 truncate">{value}</div>
+                  <div className="text-xs font-semibold text-gray-700 mt-1">{label}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{sub}</div>
+                </div>
+              ))}
+            </div>
+            {portfolioInsightSentence && (
+              <p className="text-sm text-gray-600 italic border-t border-gray-100 pt-3">{portfolioInsightSentence}</p>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Search Opportunity Pulse */}
+      <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm mb-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Search Opportunity Pulse</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Which of your saved searches is generating the most fresh activity.
+          </p>
+        </div>
+
+        {isLoadingMatches ? (
+          <div className="text-center py-6 text-gray-400">Checking saved searches for fresh matches…</div>
+        ) : savedSearches.length === 0 ? (
+          <div className="text-center py-6 text-gray-400">
+            <div className="text-2xl mb-2">🔍</div>
+            <p>
+              No saved searches yet.{' '}
+              <Link to="/search" className="text-primary-600 hover:underline">
+                Save a search
+              </Link>{' '}
+              to track new listings here.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 grid grid-cols-2 gap-4">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <div className="text-xl font-bold text-gray-900">{opportunityPulse.totalFreshMatches}</div>
+                <div className="text-xs font-semibold text-gray-700 mt-1">Total Fresh Matches</div>
+                <div className="text-xs text-gray-400 mt-0.5">across all saved searches</div>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <div className="text-xl font-bold text-gray-900">
+                  {opportunityPulse.topSearch ? opportunityPulse.topSearch.newMatches.length : 0}
+                </div>
+                <div className="text-xs font-semibold text-gray-700 mt-1">Hottest Search</div>
+                <div className="text-xs text-gray-400 mt-0.5 truncate">
+                  {opportunityPulse.topSearch ? opportunityPulse.topSearch.search.name : 'No fresh matches yet'}
+                </div>
+              </div>
+            </div>
+            {opportunityPulse.topSearch && (
+              <Link
+                to={savedSearchToUrl(opportunityPulse.topSearch.search)}
+                className="inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 flex-shrink-0"
+              >
+                View hottest search →
+              </Link>
+            )}
           </div>
         )}
       </div>

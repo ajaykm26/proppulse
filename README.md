@@ -162,6 +162,75 @@ curl -X POST "http://localhost:3001/api/properties/<propertyId>/score" \
 
 On the frontend, the property detail page (`/properties/:id`) exposes a **PropPulse Score** section with a button that calls this endpoint and renders the score, summary, and pros/cons with loading/error states.
 
+## Market Context & Comparables
+
+The property detail page includes a **Market Context & Comparables** section that automatically loads comparable listings and a quick market snapshot for the current property.
+
+### Endpoint
+
+```bash
+GET /api/properties/:id/comparables
+```
+
+Returns 404 if the property does not exist.  Otherwise returns up to **4 comparable properties** drawn from the same city and state, plus a summary object.
+
+**Matching logic (two-pass):**
+
+1. **Strict pass** — same `propertyType` and bedroom count within ±1, ranked by price proximity.
+2. **Loose pass** — fills remaining slots from any same-city/state property, still ranked by price proximity.
+
+**Example response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "comparables": [
+      {
+        "id": "clx...",
+        "address": "456 Park Ave",
+        "city": "Jersey City",
+        "state": "NJ",
+        "zipCode": "07302",
+        "priceCents": 72500000,
+        "bedrooms": 2,
+        "bathrooms": 2,
+        "sqft": 1050,
+        "propertyType": "condo",
+        "status": "active",
+        "matchLabel": "strong",
+        "images": [],
+        "listedAt": "2024-01-15T00:00:00.000Z",
+        "updatedAt": "2024-01-15T00:00:00.000Z"
+      }
+    ],
+    "summary": {
+      "medianComparablePriceCents": 72500000,
+      "averagePricePerSqft": 690,
+      "activeComparableCount": 3,
+      "priceVsMedianPct": 3.4
+    }
+  }
+}
+```
+
+### Market Snapshot Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Median Comp Price** | Median asking price across the returned comparables |
+| **Avg $/sqft** | Average price-per-square-foot across comparables with known sqft |
+| **Comparables Found** | Count of comparable properties returned (up to 4) |
+| **vs. Median** | How the current property's price relates to the median comparable price (positive = above median, shown in red; negative = below, shown in green) |
+
+### Frontend
+
+On the property detail page (`/properties/:id`), the **Market Context & Comparables** card renders between the Investment Calculator and the PropPulse Score.  It shows:
+
+- The four market-snapshot metrics above.
+- A clickable row for each comparable property with address, price, bed/bath/sqft stats, and a match-quality badge (strong / moderate / nearby).  Each row links to that property's own detail page.
+- Loading and error states if the backend is unavailable.
+
 ## Investment Calculator
 
 The property detail page includes a client-side **Investment Calculator** that lets investors model returns without leaving the page. All calculations are entirely frontend — no backend call required.
@@ -222,6 +291,7 @@ Cells are color-coded green (positive) through red (negative) so you can immedia
 | GET | `/health` | — | Health check |
 | POST | `/api/search` | — | Search properties (Prisma-backed, supports city/state/zip/price/bed/bath/sqft/type filters + sort) |
 | GET | `/api/properties/:id` | — | Get property by ID |
+| GET | `/api/properties/:id/comparables` | — | Get up to 4 comparable properties + market snapshot for a property |
 | POST | `/api/properties/:id/score` | — | Generate a PropPulse investment score + AI narrative for a property |
 | GET | `/api/saved-searches` | ✓ | List the signed-in user's saved searches |
 | POST | `/api/saved-searches` | ✓ | Save the current search criteria to the dashboard |
@@ -236,8 +306,8 @@ Cells are color-coded green (positive) through red (negative) so you can immedia
 |------|-------------|
 | `/` | Landing page with hero section |
 | `/search` | Property search — calls real `/api/search`, renders result cards with heart toggle when signed in |
-| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in, and an **Investment Calculator** with live return metrics |
-| `/dashboard` | User dashboard (auth required) — saved properties, saved searches, and recent new-match previews from saved searches |
+| `/properties/:id` | Property detail page — loads from `/api/properties/:id`, includes save/unsave button when signed in, an **Investment Calculator** with live return metrics, a **Market Context & Comparables** section, and a PropPulse Score |
+| `/dashboard` | User dashboard (auth required) — Portfolio Snapshot metrics, Search Opportunity Pulse, saved properties, saved searches, and recent new-match previews from saved searches |
 
 ## Demo Search Queries
 
@@ -296,9 +366,31 @@ When a search returns results, a compact **Search Insights** panel appears above
 
 A plain-English summary sentence beneath the cards helps investors and homebuyers quickly interpret the result set — noting price anchors, listing volume, and demand signals like the share of listings already under contract.
 
-### Dashboard Match Previews
+### Dashboard Intelligence Panels
 
-The dashboard now turns saved searches into a lightweight alerting surface:
+The dashboard now provides three layers of intelligence on top of saved data:
+
+#### Portfolio Snapshot
+
+A four-metric card row computed client-side from saved properties:
+
+- **Total Portfolio Value** — sum of all saved property prices
+- **Median Price** — middle price across saved properties (sorted ascending)
+- **Top City** — the city with the most saved properties, plus a count of unique cities
+- **Avg $/sqft** — average price per square foot for saved properties that have sqft data
+
+A plain-English insight sentence beneath the cards summarises the portfolio in one line (city spread, median price, price-per-sqft). All calculations are client-side — no additional backend endpoints.
+
+#### Search Opportunity Pulse
+
+A compact panel that surfaces which saved search is most active:
+
+- **Total Fresh Matches** — de-duplicated count of new listings across all saved searches
+- **Hottest Search** — the saved search with the most fresh (unseen) matches, with a direct link to run it
+
+#### Dashboard Match Previews
+
+The dashboard turns saved searches into a lightweight alerting surface:
 
 - **New Matches** counts listings whose `listedAt` date is newer than when the search was saved
 - The count is **de-duplicated across saved searches** so the same property is not double-counted
@@ -307,7 +399,7 @@ The dashboard now turns saved searches into a lightweight alerting surface:
 - **Sort order is persisted** with each saved search — re-running it from the dashboard restores the original sort in the URL, and the dashboard match-preview fetches honour it too
 - Where a non-default sort was saved, a **"Sorted by: …"** label is shown on both the Recent Matches and Saved Searches cards so users know what ordering to expect
 
-This is an MVP-style preview layer built on top of the existing `/api/search` endpoint — no extra schema or background jobs required yet.
+All three panels are built on top of the existing `/api/search` and saved-data endpoints — no extra schema or background jobs required.
 
 ### URL-Synced State
 

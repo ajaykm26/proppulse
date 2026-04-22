@@ -133,6 +133,44 @@ export interface PropPulseScore {
 }
 
 // ---------------------------------------------------------------------------
+// Comparables
+// ---------------------------------------------------------------------------
+
+/**
+ * A comparable property — the full Property shape plus a human-readable
+ * indicator of how closely it matches the subject property.
+ */
+export interface ComparableProperty extends Property {
+  /**
+   * Simple string label describing the match quality, e.g. "strong",
+   * "moderate", or "nearby".  Informational only — not used for sorting.
+   */
+  matchLabel: string;
+}
+
+/** Market snapshot computed from the comparable set */
+export interface ComparablesSummary {
+  /** Median asking price across comparables, in USD cents */
+  medianComparablePriceCents: number;
+  /** Average price-per-sqft across comparables (0 if sqft unavailable) */
+  averagePricePerSqft: number;
+  /** Number of comparables returned */
+  activeComparableCount: number;
+  /**
+   * How the subject property's price relates to the median comparable price,
+   * expressed as a percentage.  Positive means above median, negative below.
+   * e.g. +12.5 means the subject is 12.5 % above the median comparable price.
+   */
+  priceVsMedianPct: number;
+}
+
+/** Full payload returned by GET /api/properties/:id/comparables */
+export interface ComparablesResult {
+  comparables: ComparableProperty[];
+  summary: ComparablesSummary;
+}
+
+// ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
 
