@@ -8,7 +8,9 @@ import { Pagination } from '../components/Pagination';
 import type { FilterValues } from '../components/FilterPanel';
 import type {
   ApiResponse,
+  CreateSavedPropertyInput,
   CreateSavedSearchInput,
+  SavedProperty,
   SearchResult,
   SearchQuery,
   PropertyType,
@@ -103,6 +105,66 @@ export function SearchPage() {
     message: null,
     error: null,
   });
+
+  // propertyId → savedPropertyId (for the heart toggle on each card)
+  const [savedMap, setSavedMap] = useState<Map<string, string>>(new Map());
+
+  // Load saved property IDs once so cards can show the heart toggle
+  useEffect(() => {
+    if (!isSignedIn) {
+      setSavedMap(new Map());
+      return;
+    }
+
+    async function loadSavedProperties() {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/saved-properties', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = (await res.json()) as ApiResponse<SavedProperty[]>;
+        if (data.success && data.data) {
+          setSavedMap(new Map(data.data.map((sp) => [sp.propertyId, sp.id])));
+        }
+      } catch {
+        // non-critical — heart state simply won't show
+      }
+    }
+
+    void loadSavedProperties();
+  }, [isSignedIn, getToken]);
+
+  async function handleToggleSave(propertyId: string, savedPropertyId: string | null) {
+    try {
+      const token = await getToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      if (savedPropertyId) {
+        // Unsave: optimistic remove, then API call
+        setSavedMap((prev) => {
+          const next = new Map(prev);
+          next.delete(propertyId);
+          return next;
+        });
+        await fetch(`/api/saved-properties/${savedPropertyId}`, { method: 'DELETE', headers });
+      } else {
+        // Save: API call then store returned id
+        const payload: CreateSavedPropertyInput = { propertyId };
+        const res = await fetch('/api/saved-properties', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json()) as ApiResponse<SavedProperty>;
+        if (data.success && data.data) {
+          setSavedMap((prev) => new Map(prev).set(propertyId, data.data!.id));
+        }
+      }
+    } catch {
+      // revert optimistic update by re-fetching on next render is acceptable for MVP
+    }
+  }
 
   useEffect(() => {
     const q = searchParams.get('q') ?? '';
@@ -294,7 +356,12 @@ export function SearchPage() {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {results.properties.map((property) => (
-              <PropertyCard key={property.id} property={property} />
+              <PropertyCard
+                key={property.id}
+                property={property}
+                savedPropertyId={isSignedIn ? (savedMap.get(property.id) ?? null) : undefined}
+                onToggleSave={isSignedIn ? handleToggleSave : undefined}
+              />
             ))}
           </div>
           <Pagination page={results.page} totalPages={results.totalPages} onPageChange={handlePageChange} />

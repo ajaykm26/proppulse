@@ -97,6 +97,21 @@ export interface CreateSavedSearchInput {
 }
 
 // ---------------------------------------------------------------------------
+// Saved properties (favorites)
+// ---------------------------------------------------------------------------
+
+export interface SavedProperty {
+  id: string;
+  propertyId: string;
+  property: Property;
+  createdAt: string;
+}
+
+export interface CreateSavedPropertyInput {
+  propertyId: string;
+}
+
+// ---------------------------------------------------------------------------
 // AI scoring
 // ---------------------------------------------------------------------------
 
