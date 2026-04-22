@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth, useUser, RedirectToSignIn } from '@clerk/clerk-react';
-import type { ApiResponse, Property, SavedProperty, SavedSearch, SearchQuery, SearchResult, SortOption } from '@proppulse/shared';
+import type { ApiResponse, DealStatus, Property, SavedProperty, SavedSearch, SearchQuery, SearchResult, SortOption } from '@proppulse/shared';
+
+const DEAL_STATUS_OPTIONS: { value: DealStatus; label: string; color: string }[] = [
+  { value: 'watching', label: 'Watching', color: 'bg-gray-100 text-gray-700' },
+  { value: 'analyzing', label: 'Analyzing', color: 'bg-blue-100 text-blue-700' },
+  { value: 'offer_made', label: 'Offer Made', color: 'bg-amber-100 text-amber-700' },
+  { value: 'passed', label: 'Passed', color: 'bg-red-100 text-red-600' },
+];
 
 interface SavedSearchMatchPreview {
   search: SavedSearch;
@@ -88,6 +95,11 @@ export function DashboardPage() {
   const [isLoadingMatches, setIsLoadingMatches] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [matchesError, setMatchesError] = useState<string | null>(null);
+  const [expandedNotesId, setExpandedNotesId] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -252,6 +264,56 @@ export function DashboardPage() {
     const topSearch = sorted[0] && sorted[0].newMatches.length > 0 ? sorted[0] : null;
     return { totalFreshMatches: newMatchesCount, topSearch };
   }, [matchPreviews, newMatchesCount]);
+
+  function toggleNotes(sp: SavedProperty) {
+    if (expandedNotesId === sp.id) {
+      setExpandedNotesId(null);
+    } else {
+      setExpandedNotesId(sp.id);
+      setNoteDrafts((prev) => ({ ...prev, [sp.id]: prev[sp.id] ?? sp.notes ?? '' }));
+      setTimeout(() => noteTextareaRef.current?.focus(), 50);
+    }
+  }
+
+  async function handleSaveNote(sp: SavedProperty) {
+    const draft = noteDrafts[sp.id] ?? '';
+    setSavingNoteId(sp.id);
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/saved-properties/${sp.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ notes: draft || null }),
+      });
+      const data = (await res.json()) as ApiResponse<SavedProperty>;
+      if (!res.ok || !data.success || !data.data) throw new Error(data.error ?? 'Failed to save note');
+      setSavedProperties((current) => current.map((item) => (item.id === sp.id ? data.data! : item)));
+      setExpandedNotesId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save note');
+    } finally {
+      setSavingNoteId(null);
+    }
+  }
+
+  async function handleDealStatusChange(sp: SavedProperty, newStatus: DealStatus) {
+    setUpdatingStatusId(sp.id);
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/saved-properties/${sp.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ dealStatus: newStatus }),
+      });
+      const data = (await res.json()) as ApiResponse<SavedProperty>;
+      if (!res.ok || !data.success || !data.data) throw new Error(data.error ?? 'Failed to update status');
+      setSavedProperties((current) => current.map((item) => (item.id === sp.id ? data.data! : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update deal status');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  }
 
   async function handleDeleteSavedSearch(id: string) {
     try {
@@ -581,46 +643,109 @@ export function DashboardPage() {
           <div className="space-y-3">
             {savedProperties.map((sp) => {
               const p = sp.property;
+              const currentStatus = sp.dealStatus ?? 'watching';
+              const statusMeta = DEAL_STATUS_OPTIONS.find((o) => o.value === currentStatus) ?? DEAL_STATUS_OPTIONS[0];
+              const isExpanded = expandedNotesId === sp.id;
+              const draft = noteDrafts[sp.id] ?? sp.notes ?? '';
               return (
                 <div
                   key={sp.id}
-                  className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="rounded-xl border border-gray-100 bg-gray-50 p-4"
                 >
-                  <div className="flex items-center gap-4 min-w-0">
-                    {p.images[0] && (
-                      <img
-                        src={p.images[0]}
-                        alt={p.address}
-                        className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-gray-200"
-                      />
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold text-gray-900">{formatPrice(p.priceCents)}</div>
-                      <div className="text-sm text-gray-600 truncate">
-                        {p.address}, {p.city}, {p.state}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-center gap-4 min-w-0">
+                      {p.images[0] && (
+                        <img
+                          src={p.images[0]}
+                          alt={p.address}
+                          className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-gray-200"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-900">{formatPrice(p.priceCents)}</div>
+                        <div className="text-sm text-gray-600 truncate">
+                          {p.address}, {p.city}, {p.state}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {p.bedrooms} bd · {p.bathrooms} ba · {p.sqft.toLocaleString()} sqft ·{' '}
+                          <span className="capitalize">{p.propertyType}</span>
+                        </div>
+                        {sp.notes && !isExpanded && (
+                          <p className="text-xs text-gray-500 mt-1.5 italic line-clamp-1">{sp.notes}</p>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {p.bedrooms} bd · {p.bathrooms} ba · {p.sqft.toLocaleString()} sqft ·{' '}
-                        <span className="capitalize">{p.propertyType}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                      {/* Deal status selector */}
+                      <div className="relative">
+                        <select
+                          value={currentStatus}
+                          disabled={updatingStatusId === sp.id}
+                          onChange={(e) => void handleDealStatusChange(sp, e.target.value as DealStatus)}
+                          className={`appearance-none rounded-full px-3 py-1 text-xs font-semibold cursor-pointer border-0 focus:ring-2 focus:ring-primary-400 disabled:opacity-60 ${statusMeta.color}`}
+                        >
+                          {DEAL_STATUS_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleNotes(sp)}
+                        className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                        title={isExpanded ? 'Close notes' : 'Add / edit notes'}
+                      >
+                        {isExpanded ? 'Close' : (sp.notes ? 'Notes ✎' : '+ Notes')}
+                      </button>
+
+                      <Link
+                        to={`/properties/${p.id}`}
+                        className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        View
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => void handleUnsaveProperty(sp.id)}
+                        className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <Link
-                      to={`/properties/${p.id}`}
-                      className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                      View
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => void handleUnsaveProperty(sp.id)}
-                      className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  {/* Inline notes editor */}
+                  {isExpanded && (
+                    <div className="mt-3 border-t border-gray-200 pt-3">
+                      <textarea
+                        ref={expandedNotesId === sp.id ? noteTextareaRef : null}
+                        rows={3}
+                        placeholder="Add your due diligence notes, observations, or next steps…"
+                        value={draft}
+                        onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [sp.id]: e.target.value }))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 resize-none"
+                      />
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedNotesId(null)}
+                          className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-200"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingNoteId === sp.id}
+                          onClick={() => void handleSaveNote(sp)}
+                          className="rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+                        >
+                          {savingNoteId === sp.id ? 'Saving…' : 'Save note'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

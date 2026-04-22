@@ -105,15 +105,26 @@ export interface CreateSavedSearchInput {
 // Saved properties (favorites)
 // ---------------------------------------------------------------------------
 
+/** Deal pipeline status for a saved property */
+export type DealStatus = 'watching' | 'analyzing' | 'offer_made' | 'passed';
+
 export interface SavedProperty {
   id: string;
   propertyId: string;
   property: Property;
+  notes?: string;
+  dealStatus?: DealStatus;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateSavedPropertyInput {
   propertyId: string;
+}
+
+export interface UpdateSavedPropertyInput {
+  notes?: string | null;
+  dealStatus?: DealStatus | null;
 }
 
 // ---------------------------------------------------------------------------
