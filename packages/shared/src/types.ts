@@ -131,6 +131,20 @@ export interface UpdateSavedPropertyInput {
 // AI scoring
 // ---------------------------------------------------------------------------
 
+export type PropPulseFactorKey =
+  | 'pricing'
+  | 'sizeLayout'
+  | 'marketStatus'
+  | 'renterAppeal'
+  | 'liquidity';
+
+export interface PropPulseFactorScore {
+  key: PropPulseFactorKey;
+  label: string;
+  score: number;
+  insight: string;
+}
+
 /** AI-generated investment score and narrative for a property */
 export interface PropPulseScore {
   /** Overall investment attractiveness from 0 (worst) to 100 (best) */
@@ -141,6 +155,12 @@ export interface PropPulseScore {
   pros: string[];
   /** Key risks or drawbacks to be aware of */
   cons: string[];
+  /** Component-level breakdown to make the score easier to trust */
+  factors: PropPulseFactorScore[];
+  /** How confident the model is given the available listing data */
+  confidence: 'low' | 'medium' | 'high';
+  /** Practical next steps for underwriting / diligence */
+  nextSteps: string[];
 }
 
 // ---------------------------------------------------------------------------
