@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth, useUser } from '@clerk/clerk-react';
-import type { Property, ApiResponse, PropPulseScore, SavedProperty, CreateSavedPropertyInput } from '@proppulse/shared';
+import type {
+  Property,
+  ApiResponse,
+  PropPulseScore,
+  SavedProperty,
+  CreateSavedPropertyInput,
+} from '@proppulse/shared';
 import { InvestmentCalculator } from '../components/InvestmentCalculator';
 import { ComparablesCard } from '../components/ComparablesCard';
 
@@ -20,6 +26,47 @@ const statusStyles: Record<string, string> = {
   'off-market': 'bg-gray-100 text-gray-600',
 };
 
+const scoreToneStyles = {
+  strong: {
+    badge: 'bg-emerald-100 text-emerald-800',
+    ring: 'ring-emerald-200',
+    fill: 'bg-emerald-500',
+  },
+  workable: {
+    badge: 'bg-amber-100 text-amber-800',
+    ring: 'ring-amber-200',
+    fill: 'bg-amber-500',
+  },
+  caution: {
+    badge: 'bg-rose-100 text-rose-800',
+    ring: 'ring-rose-200',
+    fill: 'bg-rose-500',
+  },
+};
+
+function getScoreTone(score: number): keyof typeof scoreToneStyles {
+  if (score >= 75) return 'strong';
+  if (score >= 60) return 'workable';
+  return 'caution';
+}
+
+function getScoreLabel(score: number): string {
+  if (score >= 75) return 'Strong lead';
+  if (score >= 60) return 'Workable deal';
+  return 'High caution';
+}
+
+function getConfidenceLabel(confidence: PropPulseScore['confidence']): string {
+  switch (confidence) {
+    case 'high':
+      return 'High confidence';
+    case 'medium':
+      return 'Medium confidence';
+    default:
+      return 'Low confidence';
+  }
+}
+
 export function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { isSignedIn } = useUser();
@@ -35,6 +82,11 @@ export function PropertyDetailPage() {
   // undefined = not yet loaded, null = not saved, string = savedPropertyId
   const [savedPropertyId, setSavedPropertyId] = useState<string | null | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+
+  const scoreTone = useMemo(
+    () => (score ? scoreToneStyles[getScoreTone(score.score)] : scoreToneStyles.workable),
+    [score],
+  );
 
   useEffect(() => {
     if (!id || !isSignedIn) {
@@ -87,12 +139,37 @@ export function PropertyDetailPage() {
     }
   }
 
+  const loadScore = useCallback(async (options?: { force?: boolean }) => {
+    if (!id) return;
+
+    setIsScoring(true);
+    setScoreError(null);
+
+    try {
+      const res = await fetch(`/api/properties/${id}/score`, {
+        method: options?.force ? 'POST' : 'GET',
+      });
+      const data = (await res.json()) as ApiResponse<PropPulseScore>;
+
+      if (!data.success || !data.data) {
+        setScoreError(data.error ?? 'Failed to generate score.');
+        setScore(null);
+      } else {
+        setScore(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load PropPulse score', err);
+      setScoreError('Could not reach the scoring service. Is the backend running?');
+      setScore(null);
+    } finally {
+      setIsScoring(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
-
-    // Reset score state when we navigate to a different property
     setScore(null);
     setScoreError(null);
 
@@ -101,13 +178,14 @@ export function PropertyDetailPage() {
       .then((data) => {
         if (data.success && data.data) {
           setProperty(data.data);
+          void loadScore();
         } else {
           setError(data.error ?? 'Property not found.');
         }
       })
       .catch(() => setError('Failed to load property. Is the backend running?'))
       .finally(() => setIsLoading(false));
-  }, [id]);
+  }, [id, loadScore]);
 
   if (isLoading) {
     return (
@@ -136,17 +214,14 @@ export function PropertyDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      {/* Back link */}
       <Link to="/search" className="text-sm text-primary-600 hover:underline mb-6 inline-block">
         ← Back to search
       </Link>
 
-      {/* Image */}
       <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 mb-6">
         <img src={image} alt={property.address} className="w-full h-full object-cover" />
       </div>
 
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{formatPrice(property.priceCents)}</h1>
@@ -191,7 +266,6 @@ export function PropertyDetailPage() {
         </div>
       </div>
 
-      {/* Stats grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Bedrooms', value: String(property.bedrooms) },
@@ -206,7 +280,6 @@ export function PropertyDetailPage() {
         ))}
       </div>
 
-      {/* AI Summary */}
       {property.aiSummary && (
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 mb-6">
           <div className="text-sm font-semibold text-blue-800 mb-2">✨ AI Summary</div>
@@ -214,101 +287,139 @@ export function PropertyDetailPage() {
         </div>
       )}
 
-      {/* Investment Calculator */}
-      <InvestmentCalculator priceCents={property.priceCents} />
-
-      {/* Market Context & Comparables */}
-      <ComparablesCard propertyId={property.id} />
-
-      {/* PropPulse Score */}
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-6">
-        <div className="flex items-center justify-between gap-3 mb-3">
+      <div className={`bg-white border rounded-2xl p-5 mb-6 shadow-sm ring-1 ${scoreTone.ring}`}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-4">
           <div>
             <div className="text-sm font-semibold text-gray-800">📊 PropPulse Score</div>
-            <p className="text-xs text-gray-500">
-              Investment-focused score and commentary for this property.
+            <p className="text-xs text-gray-500 mt-1 max-w-2xl">
+              Fast investment screening with a breakdown, narrative, and next-step diligence prompts.
             </p>
           </div>
           <button
             type="button"
-            onClick={async () => {
-              if (!id) return;
-              setIsScoring(true);
-              setScoreError(null);
-
-              try {
-                const res = await fetch(`/api/properties/${id}/score`, {
-                  method: 'POST',
-                });
-                const data = (await res.json()) as ApiResponse<PropPulseScore>;
-
-                if (!data.success || !data.data) {
-                  setScoreError(data.error ?? 'Failed to generate score.');
-                  setScore(null);
-                } else {
-                  setScore(data.data);
-                }
-              } catch (err) {
-                console.error('Failed to load PropPulse score', err);
-                setScoreError('Could not reach the scoring service. Is the backend running?');
-                setScore(null);
-              } finally {
-                setIsScoring(false);
-              }
-            }}
+            onClick={() => void loadScore({ force: true })}
             className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={isScoring}
           >
-            {isScoring ? 'Scoring…' : score ? 'Re-score property' : 'Generate score'}
+            {isScoring ? 'Refreshing…' : score ? 'Refresh analysis' : 'Generate analysis'}
           </button>
         </div>
 
-        {scoreError && (
-          <p className="text-xs text-red-600 mb-2">{scoreError}</p>
+        {scoreError && <p className="text-xs text-red-600 mb-2">{scoreError}</p>}
+
+        {isScoring && !score && (
+          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)] animate-pulse">
+            <div className="rounded-2xl bg-gray-100 h-44" />
+            <div className="space-y-3">
+              <div className="rounded bg-gray-100 h-4 w-40" />
+              <div className="rounded bg-gray-100 h-4 w-full" />
+              <div className="rounded bg-gray-100 h-4 w-11/12" />
+              <div className="grid sm:grid-cols-2 gap-3 pt-2">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="rounded-xl bg-gray-100 h-24" />
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {score && (
-          <div className="space-y-3">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-gray-900">{score.score}</span>
-              <span className="text-xs uppercase tracking-wide text-gray-500">/ 100</span>
+          <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${scoreTone.badge}`}>
+                  {getScoreLabel(score.score)}
+                </span>
+                <span className="text-xs text-gray-500">{getConfidenceLabel(score.confidence)}</span>
+              </div>
+              <div className="flex items-end gap-2 mb-4">
+                <span className="text-5xl font-bold tracking-tight text-gray-900">{score.score}</span>
+                <span className="text-sm text-gray-500 mb-1">/ 100</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-200 overflow-hidden mb-4">
+                <div className={`h-full ${scoreTone.fill}`} style={{ width: `${score.score}%` }} />
+              </div>
+              <div className="space-y-2">
+                {score.factors.map((factor) => (
+                  <div key={factor.key}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-gray-700">{factor.label}</span>
+                      <span className="text-gray-500">{factor.score}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                      <div className={`h-full ${scoreTone.fill}`} style={{ width: `${factor.score}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-              {score.summary}
-            </p>
 
-            {(score.pros?.length ?? 0) > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-gray-800 mb-1">Pros</div>
-                <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
-                  {score.pros.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <div className="space-y-4">
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                {score.summary}
+              </p>
 
-            {(score.cons?.length ?? 0) > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-gray-800 mb-1">Cons</div>
-                <ul className="list-disc list-inside text-xs text-gray-700 space-y-0.5">
-                  {score.cons.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+              <div className="grid md:grid-cols-2 gap-3">
+                {score.factors.map((factor) => (
+                  <div key={factor.key} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="text-sm font-semibold text-gray-800">{factor.label}</div>
+                      <div className="text-xs font-medium text-gray-500">{factor.score}/100</div>
+                    </div>
+                    <p className="text-xs leading-relaxed text-gray-600">{factor.insight}</p>
+                  </div>
+                ))}
               </div>
-            )}
+
+              <div className="grid md:grid-cols-2 gap-4">
+                {(score.pros?.length ?? 0) > 0 && (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800 mb-2">Upside</div>
+                    <ul className="list-disc list-inside text-sm text-emerald-900 space-y-1">
+                      {score.pros.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(score.cons?.length ?? 0) > 0 && (
+                  <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-rose-800 mb-2">Risk watchouts</div>
+                    <ul className="list-disc list-inside text-sm text-rose-900 space-y-1">
+                      {score.cons.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {(score.nextSteps?.length ?? 0) > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-2">Recommended next steps</div>
+                  <ol className="list-decimal list-inside text-sm text-slate-800 space-y-1">
+                    {score.nextSteps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {!score && !scoreError && !isScoring && (
           <p className="text-xs text-gray-500">
-            Click "Generate score" to see an investment-oriented rating and summary for this property.
+            No analysis yet. Generate one to see the investment score, factor breakdown, and diligence checklist.
           </p>
         )}
       </div>
 
-      {/* Listed date */}
+      <InvestmentCalculator priceCents={property.priceCents} />
+
+      <ComparablesCard propertyId={property.id} />
+
       <p className="text-xs text-gray-400">
         Listed{' '}
         {new Date(property.listedAt).toLocaleDateString('en-US', {

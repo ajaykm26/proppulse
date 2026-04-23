@@ -7,10 +7,14 @@ interface ScoreParams {
   id: string;
 }
 
-export async function propertyScoreRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.post(
-    '/api/properties/:id/score',
-    async (
+function registerScoreRoute(
+  fastify: FastifyInstance,
+  method: 'GET' | 'POST',
+): void {
+  fastify.route<{ Params: ScoreParams }>({
+    method,
+    url: '/api/properties/:id/score',
+    handler: async (
       request: FastifyRequest<{ Params: ScoreParams }>,
       reply,
     ): Promise<ApiResponse<PropPulseScore>> => {
@@ -51,5 +55,10 @@ export async function propertyScoreRoutes(fastify: FastifyInstance): Promise<voi
         data: score,
       };
     },
-  );
+  });
+}
+
+export async function propertyScoreRoutes(fastify: FastifyInstance): Promise<void> {
+  registerScoreRoute(fastify, 'GET');
+  registerScoreRoute(fastify, 'POST');
 }
