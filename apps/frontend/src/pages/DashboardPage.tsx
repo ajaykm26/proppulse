@@ -39,6 +39,7 @@ function savedSearchToUrl(search: SavedSearch): string {
   const params = new URLSearchParams();
   const query = search.query;
 
+  params.set('savedSearchId', search.id);
   if (query.query) params.set('q', query.query);
   if (query.minPriceCents != null) params.set('minPrice', String(query.minPriceCents / 100));
   if (query.maxPriceCents != null) params.set('maxPrice', String(query.maxPriceCents / 100));
@@ -682,7 +683,7 @@ export function DashboardPage() {
                     to={savedSearchToUrl(search)}
                     className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
                   >
-                    Run search
+                    Edit criteria
                   </Link>
                   <button
                     type="button"

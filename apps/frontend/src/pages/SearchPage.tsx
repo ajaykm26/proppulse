@@ -18,6 +18,7 @@ import type {
   PropertyStatus,
   SavedSearch,
   SortOption,
+  UpdateSavedSearchInput,
 } from '@proppulse/shared';
 
 function parseQuery(q: string): Partial<SearchQuery> {
@@ -56,7 +57,13 @@ function paramsToFilters(p: URLSearchParams): FilterValues {
   };
 }
 
-function buildParams(q: string, f: FilterValues, page?: number, sort?: SortOption): Record<string, string> {
+function buildParams(
+  q: string,
+  f: FilterValues,
+  page?: number,
+  sort?: SortOption,
+  savedSearchId?: string,
+): Record<string, string> {
   const params: Record<string, string> = {};
   if (q) params.q = q;
   if (f.minPrice) params.minPrice = f.minPrice;
@@ -67,6 +74,7 @@ function buildParams(q: string, f: FilterValues, page?: number, sort?: SortOptio
   if (f.status) params.status = f.status;
   if (page && page > 1) params.page = String(page);
   if (sort && sort !== 'best-match') params.sort = sort;
+  if (savedSearchId) params.savedSearchId = savedSearchId;
   return params;
 }
 
@@ -109,6 +117,7 @@ export function SearchPage() {
     message: null,
     error: null,
   });
+  const [activeSavedSearch, setActiveSavedSearch] = useState<SavedSearch | null>(null);
 
   // propertyId → savedPropertyId (for the heart toggle on each card)
   const [savedMap, setSavedMap] = useState<Map<string, string>>(new Map());
@@ -185,6 +194,34 @@ export function SearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  useEffect(() => {
+    const savedSearchId = searchParams.get('savedSearchId');
+
+    if (!isSignedIn || !savedSearchId) {
+      setActiveSavedSearch(null);
+      return;
+    }
+
+    async function loadSavedSearch() {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/saved-searches', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = (await res.json()) as ApiResponse<SavedSearch[]>;
+        if (data.success && data.data) {
+          setActiveSavedSearch(data.data.find((item) => item.id === savedSearchId) ?? null);
+        } else {
+          setActiveSavedSearch(null);
+        }
+      } catch {
+        setActiveSavedSearch(null);
+      }
+    }
+
+    void loadSavedSearch();
+  }, [getToken, isSignedIn, searchParams]);
+
   async function runSearch(q: string, page: number, f: FilterValues, sort?: SortOption) {
     setIsLoading(true);
     setError(null);
@@ -207,27 +244,31 @@ export function SearchPage() {
 
   function handleSearch(newQ: string) {
     const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
-    setSearchParams(buildParams(newQ, filters, undefined, sort));
+    const savedSearchId = activeSavedSearch?.id ?? undefined;
+    setSearchParams(buildParams(newQ, filters, undefined, sort, savedSearchId));
   }
 
   function handleApplyFilters(nextFilters?: FilterValues) {
     const q = searchParams.get('q') ?? '';
     const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
-    setSearchParams(buildParams(q, nextFilters ?? filters, undefined, sort));
+    const savedSearchId = activeSavedSearch?.id ?? undefined;
+    setSearchParams(buildParams(q, nextFilters ?? filters, undefined, sort, savedSearchId));
   }
 
   function handlePageChange(newPage: number) {
     const q = searchParams.get('q') ?? '';
     const f = paramsToFilters(searchParams);
     const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
-    setSearchParams(buildParams(q, f, newPage, sort));
+    const savedSearchId = activeSavedSearch?.id ?? undefined;
+    setSearchParams(buildParams(q, f, newPage, sort, savedSearchId));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function handleSortChange(newSort: SortOption) {
     const q = searchParams.get('q') ?? '';
     const f = paramsToFilters(searchParams);
-    setSearchParams(buildParams(q, f, 1, newSort));
+    const savedSearchId = activeSavedSearch?.id ?? undefined;
+    setSearchParams(buildParams(q, f, 1, newSort, savedSearchId));
   }
 
   async function handleSaveSearch() {
@@ -235,30 +276,57 @@ export function SearchPage() {
     const page = parseInt(searchParams.get('page') ?? '1', 10);
     const sort = (searchParams.get('sort') as SortOption | null) ?? undefined;
     const query = filtersToSearchQuery(q, page, filters, sort);
-    const payload: CreateSavedSearchInput = {
-      name: buildSavedSearchName(q, filters),
-      query,
-    };
+    const defaultName = buildSavedSearchName(q, filters);
 
     setSaveState({ loading: true, message: null, error: null });
 
     try {
       const token = await getToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      if (activeSavedSearch) {
+        const payload: UpdateSavedSearchInput = {
+          name: activeSavedSearch.name || defaultName,
+          query,
+        };
+        const res = await fetch(`/api/saved-searches/${activeSavedSearch.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(payload),
+        });
+
+        const data = (await res.json()) as ApiResponse<SavedSearch>;
+        if (!res.ok || !data.success || !data.data) {
+          throw new Error(data.error ?? 'Failed to update saved search');
+        }
+
+        setActiveSavedSearch(data.data);
+        setSaveState({ loading: false, message: `Updated “${data.data.name}”`, error: null });
+        return;
+      }
+
+      const payload: CreateSavedSearchInput = {
+        name: defaultName,
+        query,
+      };
+
       const res = await fetch('/api/saved-searches', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
       const data = (await res.json()) as ApiResponse<SavedSearch>;
-      if (!res.ok || !data.success) {
+      if (!res.ok || !data.success || !data.data) {
         throw new Error(data.error ?? 'Failed to save search');
       }
 
-      setSaveState({ loading: false, message: `Saved as “${data.data?.name ?? payload.name}”`, error: null });
+      setActiveSavedSearch(data.data);
+      setSearchParams(buildParams(q, filters, page, sort, data.data.id));
+      setSaveState({ loading: false, message: `Saved as “${data.data.name}”`, error: null });
     } catch (err) {
       setSaveState({
         loading: false,
@@ -273,9 +341,9 @@ export function SearchPage() {
   const activeFilters = paramsToFilters(searchParams);
   const hasInput = !!q || hasActiveFilters(activeFilters);
   const saveButtonLabel = useMemo(() => {
-    if (saveState.loading) return 'Saving…';
-    return 'Save search';
-  }, [saveState.loading]);
+    if (saveState.loading) return activeSavedSearch ? 'Updating…' : 'Saving…';
+    return activeSavedSearch ? 'Update saved search' : 'Save search';
+  }, [activeSavedSearch, saveState.loading]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -284,6 +352,7 @@ export function SearchPage() {
           <h1 className="text-2xl font-bold text-gray-900">Find your next home</h1>
           <p className="text-sm text-gray-500 mt-1">
             Search listings, apply filters, and save promising criteria for later.
+            {activeSavedSearch ? ` Editing “${activeSavedSearch.name}”.` : ''}
           </p>
         </div>
 

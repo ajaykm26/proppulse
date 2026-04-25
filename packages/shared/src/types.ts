@@ -101,6 +101,11 @@ export interface CreateSavedSearchInput {
   query: SearchQuery;
 }
 
+export interface UpdateSavedSearchInput {
+  name?: string;
+  query?: SearchQuery;
+}
+
 // ---------------------------------------------------------------------------
 // Saved properties (favorites)
 // ---------------------------------------------------------------------------
