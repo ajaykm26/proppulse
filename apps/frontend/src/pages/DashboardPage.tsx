@@ -73,7 +73,7 @@ function toPreviewQuery(query: SearchQuery): SearchQuery {
   return {
     ...query,
     page: 1,
-    limit: 6,
+    limit: 8,
   };
 }
 
@@ -88,6 +88,7 @@ export function DashboardPage() {
   const [isLoadingMatches, setIsLoadingMatches] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [matchesError, setMatchesError] = useState<string | null>(null);
+  const [savingPropertyIds, setSavingPropertyIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -290,6 +291,41 @@ export function DashboardPage() {
     }
   }
 
+  async function handleToggleSaveFromPreview(propertyId: string, savedPropertyId: string | null) {
+    if (savingPropertyIds.has(propertyId)) return;
+    setSavingPropertyIds((prev) => new Set([...prev, propertyId]));
+    try {
+      const token = await getToken();
+      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      if (savedPropertyId) {
+        const res = await fetch(`/api/saved-properties/${savedPropertyId}`, {
+          method: 'DELETE',
+          headers: authHeaders,
+        });
+        const data = (await res.json()) as ApiResponse<{ id: string }>;
+        if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to remove property');
+        setSavedProperties((prev) => prev.filter((sp) => sp.id !== savedPropertyId));
+      } else {
+        const res = await fetch('/api/saved-properties', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({ propertyId }),
+        });
+        const data = (await res.json()) as ApiResponse<SavedProperty>;
+        if (!res.ok || !data.success || !data.data) throw new Error(data.error ?? 'Failed to save property');
+        setSavedProperties((prev) => [...prev, data.data!]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update saved properties');
+    } finally {
+      setSavingPropertyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(propertyId);
+        return next;
+      });
+    }
+  }
+
   if (!isLoaded) {
     return <div className="flex items-center justify-center py-24 text-gray-500">Loading...</div>;
   }
@@ -338,16 +374,33 @@ export function DashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Recent Matches</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Fresh listings from your saved searches, excluding properties you've already favorited.
+              Listings from your saved searches — fresh matches shown first, unfavorited only.
             </p>
           </div>
-          <Link to="/search" className="text-sm text-primary-600 hover:underline">
+          <Link to="/search" className="text-sm text-primary-600 hover:underline whitespace-nowrap">
             Explore search
           </Link>
         </div>
 
         {isLoadingMatches ? (
-          <div className="text-center py-10 text-gray-400">Checking your saved searches for new matches…</div>
+          <div className="space-y-5">
+            {[1, 2].map((i) => (
+              <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 p-4 animate-pulse">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="h-5 bg-gray-200 rounded w-40 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-56" />
+                  </div>
+                  <div className="h-8 bg-gray-200 rounded-lg w-28" />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {[1, 2].map((j) => (
+                    <div key={j} className="rounded-xl bg-white border border-gray-100 h-28" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : savedSearches.length === 0 ? (
           <div className="text-center py-10 text-gray-400">
             <div className="text-3xl mb-2">🔔</div>
@@ -355,84 +408,206 @@ export function DashboardPage() {
             <p className="text-sm mt-1">
               Save a search and PropPulse will surface fresh matching listings here.
             </p>
-          </div>
-        ) : matchPreviews.every((preview) => preview.newMatches.length === 0) ? (
-          <div className="text-center py-10 text-gray-400">
-            <div className="text-3xl mb-2">✨</div>
-            <p>No fresh matches right now.</p>
-            <p className="text-sm mt-1">Your dashboard will light up here when new listings land.</p>
+            <Link to="/search" className="inline-block mt-4 text-sm font-medium text-primary-600 hover:underline">
+              Run your first search →
+            </Link>
           </div>
         ) : (
           <div className="space-y-5">
-            {matchPreviews
-              .filter((preview) => preview.newMatches.length > 0)
+            {[...matchPreviews]
               .sort((a, b) => b.newMatches.length - a.newMatches.length)
-              .map((preview) => (
-                <div key={preview.search.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-gray-900">{preview.search.name}</h3>
-                        <span className="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700">
-                          {preview.newMatches.length} new
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1">{describeQuery(preview.search)}</p>
-                      {sortLabel(preview.search.query.sort) && (
-                        <p className="text-xs text-primary-600 mt-1">
-                          Sorted by: {sortLabel(preview.search.query.sort)}
+              .map((preview) => {
+                const newMatchIds = new Set(preview.newMatches.map((p) => p.id));
+                const previewList = [
+                  ...preview.newMatches,
+                  ...preview.previewProperties.filter((p) => !newMatchIds.has(p.id)),
+                ].slice(0, 4);
+
+                return (
+                  <div key={preview.search.id} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-gray-900">{preview.search.name}</h3>
+                          {preview.newMatches.length > 0 ? (
+                            <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
+                              {preview.newMatches.length} new
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
+                              No new matches
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">{describeQuery(preview.search)}</p>
+                        {sortLabel(preview.search.query.sort) && (
+                          <p className="text-xs text-primary-600 mt-1">
+                            Sorted by: {sortLabel(preview.search.query.sort)}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-2">
+                          {preview.total} total match{preview.total === 1 ? '' : 'es'} · saved{' '}
+                          {new Date(preview.search.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
                         </p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-2">
-                        {preview.total} total match{preview.total === 1 ? '' : 'es'} · saved{' '}
-                        {new Date(preview.search.createdAt).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </p>
+                      </div>
+
+                      <Link
+                        to={savedSearchToUrl(preview.search)}
+                        className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 flex-shrink-0"
+                      >
+                        View full search
+                      </Link>
                     </div>
 
-                    <Link
-                      to={savedSearchToUrl(preview.search)}
-                      className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                      View full search
-                    </Link>
-                  </div>
+                    {previewList.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-400">
+                        No listings found for this search right now.{' '}
+                        <Link to={savedSearchToUrl(preview.search)} className="text-primary-600 hover:underline">
+                          Adjust your criteria
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {previewList.map((property) => {
+                          const isNewMatch = newMatchIds.has(property.id);
+                          const savedProp = savedProperties.find((sp) => sp.propertyId === property.id);
+                          const spId = savedProp?.id ?? null;
+                          const isSaved = spId !== null;
+                          const isSaving = savingPropertyIds.has(property.id);
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {preview.newMatches.slice(0, 4).map((property) => (
-                      <Link
-                        key={`${preview.search.id}-${property.id}`}
-                        to={`/properties/${property.id}`}
-                        className="rounded-xl border border-white bg-white p-4 shadow-sm hover:border-primary-200 hover:shadow-md transition"
-                      >
-                        <div className="flex gap-4">
-                          <img
-                            src={property.images[0] ?? 'https://via.placeholder.com/320x220?text=No+Image'}
-                            alt={property.address}
-                            className="h-20 w-24 rounded-lg object-cover bg-gray-100 flex-shrink-0"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="font-semibold text-gray-900">{formatPrice(property.priceCents)}</div>
-                              <div className="text-xs text-green-600 whitespace-nowrap">New</div>
+                          return (
+                            <div
+                              key={`${preview.search.id}-${property.id}`}
+                              className="rounded-xl border border-white bg-white shadow-sm hover:border-primary-200 hover:shadow-md transition overflow-hidden"
+                            >
+                              <Link to={`/properties/${property.id}`} className="flex gap-4 p-4 block">
+                                <div className="relative flex-shrink-0">
+                                  <img
+                                    src={property.images[0] ?? 'https://via.placeholder.com/320x220?text=No+Image'}
+                                    alt={property.address}
+                                    className="h-20 w-24 rounded-lg object-cover bg-gray-100"
+                                  />
+                                  <span
+                                    className={[
+                                      'absolute top-1 left-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full capitalize',
+                                      property.status === 'active'
+                                        ? 'bg-green-100 text-green-800'
+                                        : property.status === 'pending'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : property.status === 'sold'
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-gray-100 text-gray-600',
+                                    ].join(' ')}
+                                  >
+                                    {property.status}
+                                  </span>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="font-semibold text-gray-900 text-sm">
+                                      {formatPrice(property.priceCents)}
+                                    </div>
+                                    {isNewMatch && (
+                                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 whitespace-nowrap flex-shrink-0">
+                                        New
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-600 truncate mt-0.5">
+                                    {property.address}, {property.city}, {property.state}
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-1.5">
+                                    {property.bedrooms} bd · {property.bathrooms} ba ·{' '}
+                                    {property.sqft.toLocaleString()} sqft ·{' '}
+                                    <span className="capitalize">{property.propertyType}</span>
+                                  </div>
+                                  {property.aiSummary && (
+                                    <p className="text-xs text-gray-500 line-clamp-2 mt-1.5">
+                                      {property.aiSummary}
+                                    </p>
+                                  )}
+                                </div>
+                              </Link>
+
+                              <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50/50">
+                                <span className="text-xs text-gray-400">
+                                  Listed {formatListedDate(property.listedAt)}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <Link
+                                    to={`/properties/${property.id}`}
+                                    className="text-xs font-medium text-primary-600 hover:underline"
+                                  >
+                                    Details →
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleToggleSaveFromPreview(property.id, spId)}
+                                    disabled={isSaving}
+                                    aria-label={isSaved ? 'Remove from saved properties' : 'Save property'}
+                                    className={[
+                                      'flex items-center justify-center w-7 h-7 rounded-full border transition-colors disabled:opacity-50',
+                                      isSaved
+                                        ? 'border-red-300 bg-red-50 text-red-500 hover:bg-red-100'
+                                        : 'border-gray-200 bg-white text-gray-400 hover:border-red-300 hover:text-red-400',
+                                    ].join(' ')}
+                                  >
+                                    {isSaving ? (
+                                      <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                        <circle
+                                          className="opacity-25"
+                                          cx="12"
+                                          cy="12"
+                                          r="10"
+                                          stroke="currentColor"
+                                          strokeWidth="4"
+                                        />
+                                        <path
+                                          className="opacity-75"
+                                          fill="currentColor"
+                                          d="M4 12a8 8 0 018-8v8z"
+                                        />
+                                      </svg>
+                                    ) : isSaved ? (
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="currentColor"
+                                        className="w-3.5 h-3.5"
+                                      >
+                                        <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={1.5}
+                                        stroke="currentColor"
+                                        className="w-3.5 h-3.5"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+                                        />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm text-gray-600 truncate mt-1">
-                              {property.address}, {property.city}, {property.state}
-                            </div>
-                            <div className="text-xs text-gray-400 mt-2">
-                              {property.bedrooms} bd · {property.bathrooms} ba · {property.sqft.toLocaleString()} sqft
-                            </div>
-                            <div className="text-xs text-gray-400 mt-2">Listed {formatListedDate(property.listedAt)}</div>
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
           </div>
         )}
       </div>
