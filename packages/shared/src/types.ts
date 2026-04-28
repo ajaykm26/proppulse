@@ -105,20 +105,45 @@ export interface CreateSavedSearchInput {
 // Saved properties (favorites)
 // ---------------------------------------------------------------------------
 
+/** Deal pipeline status for a saved property */
+export type DealStatus = 'watching' | 'analyzing' | 'offer_made' | 'passed';
+
 export interface SavedProperty {
   id: string;
   propertyId: string;
   property: Property;
+  notes?: string;
+  dealStatus?: DealStatus;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateSavedPropertyInput {
   propertyId: string;
 }
 
+export interface UpdateSavedPropertyInput {
+  notes?: string | null;
+  dealStatus?: DealStatus | null;
+}
+
 // ---------------------------------------------------------------------------
 // AI scoring
 // ---------------------------------------------------------------------------
+
+export type PropPulseFactorKey =
+  | 'pricing'
+  | 'sizeLayout'
+  | 'marketStatus'
+  | 'renterAppeal'
+  | 'liquidity';
+
+export interface PropPulseFactorScore {
+  key: PropPulseFactorKey;
+  label: string;
+  score: number;
+  insight: string;
+}
 
 /** AI-generated investment score and narrative for a property */
 export interface PropPulseScore {
@@ -130,6 +155,12 @@ export interface PropPulseScore {
   pros: string[];
   /** Key risks or drawbacks to be aware of */
   cons: string[];
+  /** Component-level breakdown to make the score easier to trust */
+  factors: PropPulseFactorScore[];
+  /** How confident the model is given the available listing data */
+  confidence: 'low' | 'medium' | 'high';
+  /** Practical next steps for underwriting / diligence */
+  nextSteps: string[];
 }
 
 // ---------------------------------------------------------------------------
