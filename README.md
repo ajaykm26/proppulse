@@ -34,15 +34,51 @@ proppulse/
 └── package.json           # Workspace root
 ```
 
+## Local Infrastructure
+
+PropPulse ships a `docker-compose.yml` at the repo root that starts Postgres 16 and Redis 7 with zero configuration. The defaults match the `.env.example` files so you can be up and running in minutes.
+
+### Quickstart
+
+```bash
+# 1. Start Postgres + Redis
+npm run infra:up
+
+# 2. Copy env files and fill in Clerk + OpenAI keys
+cp .env.example .env
+cp apps/backend/.env.example apps/backend/.env
+
+# 3. Generate Prisma client, apply the schema, and seed sample data
+npm run db:setup
+
+# 4. Start backend + frontend (separate terminals)
+npm run dev:backend
+npm run dev:frontend
+```
+
+| Service | Host | Credentials |
+|---------|------|-------------|
+| PostgreSQL | `localhost:5432` | user `proppulse` / password `proppulse` / db `proppulse` |
+| Redis | `localhost:6379` | no auth |
+
+### Infra commands
+
+| Command | Effect |
+|---------|--------|
+| `npm run infra:up` | Start Postgres + Redis in the background |
+| `npm run infra:down` | Stop and remove the containers (data volumes are preserved) |
+| `npm run db:setup` | Generate Prisma client, apply existing migrations when present (otherwise `db push` on first local bootstrap), then seed sample data |
+
+---
+
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js >= 18
-- PostgreSQL running locally (or connection string)
-- Redis running locally (or connection string)
+- Docker (for `npm run infra:up`) **or** Postgres 14+ and Redis 7+ installed locally
 - [Clerk](https://clerk.dev) account
-- OpenAI API key
+- OpenAI API key (optional — falls back to a deterministic mock scorer if unset)
 
 ### 1. Clone & Install
 
@@ -56,44 +92,25 @@ npm install
 
 ```bash
 cp .env.example .env
-# Edit .env and fill in your values
-```
-
-Also copy `apps/backend/.env.example` → `apps/backend/.env`.
-
-For AI-powered features (like the PropPulse investment score), set:
-
-```bash
-# apps/backend/.env
-OPENAI_API_KEY="sk-..."  # your OpenAI API key
+cp apps/backend/.env.example apps/backend/.env
+# Edit both files — fill in CLERK_SECRET_KEY, CLERK_PUBLISHABLE_KEY, and OPENAI_API_KEY
 ```
 
 If `OPENAI_API_KEY` is not set, the backend will fall back to a deterministic mock scorer so the `/api/properties/:id/score` endpoint still works in local/dev environments.
 
-### 3. Set Up the Database
+### 3. Start Local Services
 
 ```bash
-cd apps/backend
-npx prisma migrate dev --name init
-npx prisma generate
+npm run infra:up   # starts Postgres + Redis via Docker Compose
 ```
 
-> **Note:** If upgrading an existing database, run a new migration to add the `saved_properties` table:
-> ```bash
-> npx prisma migrate dev --name add-saved-properties
-> ```
+### 4. Set Up the Database
 
-#### Seed sample data
+```bash
+npm run db:setup   # prisma generate + migrate/db push (depending on repo state) + seed
+```
 
 The seed script inserts ~40 realistic properties across NYC metro + NJ (Jersey City, Hoboken, Newark, Manhattan, Brooklyn, Queens, Edison, Metuchen, Montclair). It is **idempotent** — re-running wipes and re-inserts the full dataset.
-
-```bash
-# Option A — via Prisma (recommended)
-npx prisma db seed
-
-# Option B — direct npm script (from apps/backend)
-npm run seed
-```
 
 After seeding, try these searches in the UI:
 
@@ -102,7 +119,7 @@ After seeding, try these searches in the UI:
 - `condo` — free-text search across address and description
 - `Edison, NJ` — suburban NJ homes and condos
 
-### 4. Run Locally
+### 5. Run Locally
 
 In separate terminals:
 
@@ -114,14 +131,14 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-### 5. Typecheck & Lint
+### 6. Typecheck & Lint
 
 ```bash
 npm run typecheck
 npm run lint
 ```
 
-### 6. Tests
+### 7. Tests
 
 There is currently no dedicated test runner, but the root `npm test` command is configured as a fast safety check:
 
